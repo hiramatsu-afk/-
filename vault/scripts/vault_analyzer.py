@@ -28,6 +28,15 @@ Claude Code や Claude API と組み合わせて使うことを想定。
 
   # 特定フォルダのノートを一覧
   python vault_analyzer.py --list MeetingNotes
+
+  # キーワード検索（全ノートの本文＋フロントマターを横断検索）
+  python vault_analyzer.py --search "価格" --search "提案"
+
+  # 参加者・相手先で議事録を検索
+  python vault_analyzer.py --attendee "田中"
+
+  # 商談ダッシュボード（議事録の一覧 + アクションアイテム + 直近の要点）
+  python vault_analyzer.py --dashboard
 """
 
 import argparse
@@ -326,6 +335,201 @@ def cmd_list(folder: str):
         print(f"  {fm.get('date', '????-??-??')} {note.name}")
 
 
+def cmd_search(keywords: list[str]):
+    """キーワードで全ノートを横断検索"""
+    notes = iter_notes()
+    results = []
+
+    for note in notes:
+        content = note.read_text(encoding="utf-8", errors="replace")
+        content_lower = content.lower()
+        fm = parse_frontmatter(content)
+
+        # 全キーワードが含まれるかチェック（AND検索）
+        if all(kw.lower() in content_lower for kw in keywords):
+            # マッチした行を抽出（コンテキスト表示用）
+            matched_lines = []
+            for i, line in enumerate(content.split("\n"), 1):
+                line_lower = line.lower()
+                if any(kw.lower() in line_lower for kw in keywords):
+                    matched_lines.append((i, line.strip()))
+
+            results.append({
+                "file": note.relative_to(VAULT_ROOT),
+                "date": fm.get("date", ""),
+                "type": fm.get("type", "unknown"),
+                "title": note.stem,
+                "matches": matched_lines[:5],  # 最大5行
+            })
+
+    if not results:
+        print(f"No results for: {' AND '.join(keywords)}")
+        return
+
+    print(f"=== Search: {' AND '.join(keywords)} ({len(results)} hits) ===\n")
+    for r in results:
+        print(f"  [{r['type']}] {r['date']} {r['file']}")
+        for lineno, line in r["matches"]:
+            # キーワードを強調
+            display = line[:120]
+            print(f"    L{lineno}: {display}")
+        print()
+
+
+def cmd_attendee(name: str):
+    """参加者・相手先で議事録を検索"""
+    notes = iter_notes("MeetingNotes")
+    results = []
+    name_lower = name.lower()
+
+    for note in notes:
+        content = note.read_text(encoding="utf-8", errors="replace")
+        fm = parse_frontmatter(content)
+
+        # フロントマターのattendees / 本文中の参加者セクション / 本文全体で検索
+        attendees_str = fm.get("attendees", "").lower()
+        content_lower = content.lower()
+
+        if name_lower in attendees_str or name_lower in content_lower:
+            # ハイライト・要点セクションを抽出
+            highlights = []
+            in_highlights = False
+            for line in content.split("\n"):
+                if re.match(r'^#+\s*(ハイライト|要点|Highlights)', line, re.IGNORECASE):
+                    in_highlights = True
+                    continue
+                if in_highlights and re.match(r'^#+\s', line):
+                    break
+                if in_highlights and line.strip().startswith("- "):
+                    highlights.append(line.strip())
+
+            results.append({
+                "file": note.relative_to(VAULT_ROOT),
+                "date": fm.get("date", ""),
+                "title": note.stem,
+                "platform": fm.get("platform", ""),
+                "tldv_url": fm.get("tldv_url", ""),
+                "highlights": highlights[:5],
+            })
+
+    if not results:
+        print(f"No meetings found with attendee: {name}")
+        return
+
+    print(f"=== Meetings with \"{name}\" ({len(results)} found) ===\n")
+    for r in results:
+        print(f"  {r['date']} | {r['title']}")
+        if r['platform']:
+            print(f"    Platform: {r['platform']}")
+        if r['tldv_url']:
+            print(f"    tl;dv: {r['tldv_url']}")
+        if r['highlights']:
+            print(f"    Key points:")
+            for h in r['highlights']:
+                print(f"      {h}")
+        print()
+
+
+def cmd_dashboard():
+    """商談・議事録ダッシュボード"""
+    meeting_notes = iter_notes("MeetingNotes")
+    now = datetime.now()
+
+    # 全ミーティングの情報を収集
+    all_meetings = []
+    all_action_items = []
+    attendee_counter = Counter()
+
+    for note in meeting_notes:
+        content = note.read_text(encoding="utf-8", errors="replace")
+        fm = parse_frontmatter(content)
+        note_date = get_note_date(note, fm)
+
+        meeting_info = {
+            "file": note.relative_to(VAULT_ROOT),
+            "title": note.stem,
+            "date": fm.get("date", ""),
+            "platform": fm.get("platform", ""),
+            "tldv_url": fm.get("tldv_url", ""),
+        }
+        all_meetings.append(meeting_info)
+
+        # 参加者カウント
+        attendees_str = fm.get("attendees", "")
+        for name in re.findall(r'"([^"]+)"', attendees_str):
+            attendee_counter[name] += 1
+
+        # アクションアイテム抽出
+        in_action = False
+        for line in content.split("\n"):
+            if re.match(r'^#+\s*アクションアイテム', line, re.IGNORECASE) or \
+               re.match(r'^#+\s*Action\s*Item', line, re.IGNORECASE):
+                in_action = True
+                continue
+            if in_action and re.match(r'^#+\s', line):
+                in_action = False
+                continue
+            if in_action:
+                m = re.match(r'\s*- \[([ xX])\]\s*(.*)', line)
+                if m:
+                    all_action_items.append({
+                        "done": m.group(1) != " ",
+                        "text": m.group(2).strip(),
+                        "meeting": note.stem,
+                        "date": fm.get("date", ""),
+                    })
+
+    # --- ダッシュボード出力 ---
+    print("=" * 60)
+    print("  MEETING DASHBOARD")
+    print("=" * 60)
+
+    # 概要統計
+    print(f"\n## Overview")
+    print(f"  Total meetings in vault:  {len(all_meetings)}")
+    pending_actions = [a for a in all_action_items if not a["done"]]
+    done_actions = [a for a in all_action_items if a["done"]]
+    print(f"  Action items:  {len(pending_actions)} pending / {len(done_actions)} done")
+
+    # 直近のミーティング（過去14日）
+    print(f"\n## Recent Meetings (last 14 days)")
+    cutoff_14d = now - timedelta(days=14)
+    recent = []
+    for m in all_meetings:
+        try:
+            dt = datetime.strptime(m["date"], "%Y-%m-%d")
+            if dt >= cutoff_14d:
+                recent.append(m)
+        except (ValueError, TypeError):
+            pass
+
+    if recent:
+        recent.sort(key=lambda x: x["date"], reverse=True)
+        for m in recent:
+            url_info = f"  -> {m['tldv_url']}" if m['tldv_url'] else ""
+            print(f"  {m['date']} [{m['platform'] or '?'}] {m['title']}{url_info}")
+    else:
+        print("  (none)")
+
+    # 頻出ミーティング相手
+    if attendee_counter:
+        print(f"\n## Frequent Attendees")
+        for name, count in attendee_counter.most_common(10):
+            print(f"  {name}: {count} meeting(s)")
+
+    # 未完了アクションアイテム
+    if pending_actions:
+        print(f"\n## Pending Action Items ({len(pending_actions)})")
+        for a in pending_actions:
+            print(f"  - [ ] {a['text']}")
+            print(f"        from: {a['meeting']} ({a['date']})")
+
+    print(f"\n{'=' * 60}")
+    print(f"  Use --search/--attendee for deep search")
+    print(f"  Use --action-items for full action item tracking")
+    print(f"{'=' * 60}")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Analyze Obsidian Vault for Claude integration")
     parser.add_argument("--stats", action="store_true", help="Show vault statistics")
@@ -336,6 +540,12 @@ def main():
                         help="Output format for --recent")
     parser.add_argument("--weekly-report", action="store_true", help="Generate weekly report data")
     parser.add_argument("--list", metavar="FOLDER", help="List notes in folder")
+    parser.add_argument("--search", action="append", metavar="KEYWORD",
+                        help="Search notes by keyword (repeatable for AND search)")
+    parser.add_argument("--attendee", metavar="NAME",
+                        help="Search meetings by attendee/company name")
+    parser.add_argument("--dashboard", action="store_true",
+                        help="Show meeting dashboard (overview + actions + recent)")
 
     args = parser.parse_args()
 
@@ -351,6 +561,12 @@ def main():
         cmd_weekly_report()
     elif args.list:
         cmd_list(args.list)
+    elif args.search:
+        cmd_search(args.search)
+    elif args.attendee:
+        cmd_attendee(args.attendee)
+    elif args.dashboard:
+        cmd_dashboard()
     else:
         parser.print_help()
 

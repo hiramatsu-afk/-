@@ -13,11 +13,17 @@ tl;dv (TLDV) からミーティング議事録を自動取得し、Obsidian Vaul
   # 過去7日間のミーティングを同期
   python tldv_sync.py --days 7
 
+  # 過去のミーティングを全件同期
+  python tldv_sync.py --all
+
   # 特定のミーティングIDを取得
   python tldv_sync.py --meeting-id <MEETING_ID>
 
   # ドライラン（保存せずに内容を表示）
   python tldv_sync.py --dry-run
+
+  # 接続テスト（APIキーの検証とミーティング数の確認）
+  python tldv_sync.py --test
 
 定期実行（cron例）:
   # 毎日朝9時に前日分を同期
@@ -61,6 +67,41 @@ class TldvClient:
         )
         resp.raise_for_status()
         return resp.json()
+
+    def list_all_meetings(self, batch_size: int = 100) -> list:
+        """ページネーションで全ミーティングを取得"""
+        all_meetings = []
+        offset = 0
+        while True:
+            data = self.list_meetings(limit=batch_size, offset=offset)
+            meetings = data if isinstance(data, list) else data.get("meetings", data.get("results", []))
+            if not meetings:
+                break
+            all_meetings.extend(meetings)
+            if len(meetings) < batch_size:
+                break
+            offset += batch_size
+            print(f"  Fetched {len(all_meetings)} meetings so far...")
+        return all_meetings
+
+    def test_connection(self) -> dict:
+        """API接続テスト - キーの有効性とアクセス可能なデータを確認"""
+        results = {"api_key_valid": False, "meetings_accessible": False, "details": {}}
+        try:
+            data = self.list_meetings(limit=1)
+            results["api_key_valid"] = True
+            meetings = data if isinstance(data, list) else data.get("meetings", data.get("results", []))
+            results["meetings_accessible"] = True
+            results["details"]["first_meeting"] = meetings[0] if meetings else None
+            # 全件数を推定
+            all_data = self.list_meetings(limit=1, offset=0)
+            total = all_data.get("total", all_data.get("count", len(meetings)))
+            results["details"]["total_meetings"] = total
+        except requests.exceptions.HTTPError as e:
+            results["details"]["error"] = f"HTTP {e.response.status_code}: {e.response.text[:200]}"
+        except Exception as e:
+            results["details"]["error"] = str(e)
+        return results
 
     def get_meeting(self, meeting_id: str) -> dict:
         """ミーティング詳細を取得"""
@@ -280,6 +321,10 @@ def main():
                         help="Show what would be synced without saving")
     parser.add_argument("--force", action="store_true",
                         help="Re-sync already synced meetings")
+    parser.add_argument("--all", action="store_true",
+                        help="Sync ALL meetings (full history)")
+    parser.add_argument("--test", action="store_true",
+                        help="Test API connection and show account info")
 
     args = parser.parse_args()
 
@@ -292,11 +337,61 @@ def main():
     client = TldvClient(api_key)
     state = load_sync_state()
 
+    # --- 接続テストモード ---
+    if args.test:
+        print("=== tl;dv API Connection Test ===\n")
+        result = client.test_connection()
+        if result["api_key_valid"]:
+            print("  API Key:    VALID")
+            print(f"  Meetings:   accessible")
+            details = result["details"]
+            if details.get("total_meetings"):
+                print(f"  Total:      {details['total_meetings']} meeting(s) found")
+            first = details.get("first_meeting")
+            if first:
+                title = first.get("title", first.get("name", "N/A"))
+                date = first.get("date", first.get("createdAt", "N/A"))
+                print(f"\n  Latest meeting:")
+                print(f"    Title: {title}")
+                print(f"    Date:  {date}")
+                print(f"    ID:    {first.get('id', first.get('meetingId', 'N/A'))}")
+            print(f"\n  Sync state: {len(state['synced_ids'])} already synced")
+            print(f"  Last sync:  {state.get('last_sync', 'never')}")
+            print("\n  Connection test PASSED. Ready to sync.")
+        else:
+            print("  API Key:    INVALID or connection failed")
+            print(f"  Error:      {result['details'].get('error', 'unknown')}")
+            print("\n  Troubleshooting:")
+            print("  1. Check TLDV_API_KEY is correct")
+            print("  2. Ensure you have a Business or Enterprise plan")
+            print("  3. Generate a new key at: https://tldv.io/app/settings/personal-settings/api-keys")
+        return
+
     if args.meeting_id:
         # 特定のミーティングを同期
         print(f"Fetching meeting: {args.meeting_id}")
         meeting = client.get_meeting(args.meeting_id)
         sync_meeting(client, meeting, args.dry_run)
+    elif args.all:
+        # 全ミーティングを同期
+        print("Fetching ALL meetings...")
+        meetings = client.list_all_meetings()
+        print(f"Found {len(meetings)} total meeting(s).")
+        synced_count = 0
+
+        for meeting in meetings:
+            meeting_id = meeting.get("id", meeting.get("meetingId", ""))
+            if not args.force and meeting_id in state["synced_ids"]:
+                continue
+            result = sync_meeting(client, meeting, args.dry_run)
+            if result:
+                state["synced_ids"].append(meeting_id)
+                synced_count += 1
+
+        if not args.dry_run:
+            state["last_sync"] = datetime.now().isoformat()
+            save_sync_state(state)
+            print(f"\nSynced {synced_count} meeting(s) (total in vault: {len(state['synced_ids'])}).")
     else:
         # ミーティング一覧を取得して同期
         print(f"Fetching meetings from the last {args.days} day(s)...")
