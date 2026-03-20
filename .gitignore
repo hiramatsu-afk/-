@@ -1,3 +1,4 @@
+__pycache__/
 vault/scripts/youtube_config/token.json
 vault/scripts/youtube_config/client_secret.json
 vault/scripts/youtube_config/pending_replies.json
