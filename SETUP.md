@@ -140,7 +140,65 @@ python vault/scripts/vault_analyzer.py --recent 7 --format summary
 python vault/scripts/vault_analyzer.py --weekly-report
 ```
 
-## 6. 推奨Obsidianプラグイン
+## 6. YouTube コメントモデレーション
+
+YouTubeコメントの自動モデレーション（ハート付与・不適切コメント削除・返信案生成→Slack承認）。
+
+### Step 1: Google Cloud プロジェクトの準備
+1. Google Cloud Console でプロジェクトを作成
+2. YouTube Data API v3 を有効化
+3. OAuth 2.0 クライアントID を作成（デスクトップアプリケーション）
+4. `client_secret.json` をダウンロード
+
+### Step 2: OAuth クライアントシークレットを配置
+```bash
+mkdir -p vault/scripts/youtube_config
+cp ~/Downloads/client_secret_*.json vault/scripts/youtube_config/client_secret.json
+```
+
+### Step 3: 環境変数の設定
+```bash
+# .bashrc / .zshrc に追加
+export ANTHROPIC_API_KEY="your_anthropic_api_key"
+export SLACK_BOT_TOKEN="xoxb-your-slack-bot-token"
+export SLACK_CHANNEL_ID="C0XXXXXXXXX"
+```
+
+Slack Bot に必要な権限（OAuth Scopes）:
+- `chat:write` - メッセージ送信
+- Interactivity を有効化し、Request URL に Webhook サーバーのURLを設定
+
+### Step 4: OAuth認証（初回のみ）
+```bash
+python vault/scripts/youtube_comment_mod.py --auth
+```
+ブラウザが開くので、YouTubeチャンネルのGoogleアカウントでログインして許可。
+
+### Step 5: 動作テスト
+```bash
+# ドライラン（実際の操作なし）
+python vault/scripts/youtube_comment_mod.py --dry-run
+
+# 特定の動画でテスト
+python vault/scripts/youtube_comment_mod.py --video-id VIDEO_ID --dry-run
+```
+
+### Step 6: 運用
+```bash
+# 日次チェック（過去24時間のコメント）
+python vault/scripts/youtube_comment_mod.py
+
+# Slack承認ワークフロー用サーバー起動
+python vault/scripts/youtube_comment_mod.py --slack-server
+
+# cron設定（毎日朝9時に実行）
+0 9 * * * cd /path/to/repo && python vault/scripts/youtube_comment_mod.py --days 1 >> /var/log/youtube_mod.log 2>&1
+```
+
+### ペルソナ設定のカスタマイズ
+`vault/scripts/youtube_persona.json` を編集して、返信トーンや削除ルールを調整できます。
+
+## 7. 推奨Obsidianプラグイン
 
 - **Dataview**: ノートをデータベースのようにクエリ・表示
 - **Templater**: テンプレートの自動適用

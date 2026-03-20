@@ -19,6 +19,8 @@
 - `vault/scripts/tldv_webhook_server.py` - tl;dv Webhook受信サーバー（リアルタイム自動保存）
 - `vault/scripts/vault_analyzer.py` - Vault分析（統計/タスク抽出/週次レポート）
 - `vault/scripts/bookmarklet.js` - ブラウザからWebページをVaultに取り込むブックマークレット
+- `vault/scripts/youtube_comment_mod.py` - YouTubeコメントモデレーション（自動ハート/削除/返信案生成+Slack承認）
+- `vault/scripts/youtube_persona.json` - 職人社長ペルソナ設定（返信トーン・削除ルール等）
 
 ## Claudeへの指示
 - ノートを保存する際は `save_to_vault.py` を使うか、直接Markdownファイルを作成する
@@ -34,3 +36,11 @@
 - 手動同期: `python vault/scripts/tldv_sync.py --days 7`
 - 自動同期: `tldv_webhook_server.py` を起動 + tl;dv Webhookに登録
 - MCP Server: `tldv-mcp-server` でClaude Desktopから直接会議データにアクセス可能
+
+## YouTube コメントモデレーション
+- 環境変数: `ANTHROPIC_API_KEY`, `SLACK_BOT_TOKEN`, `SLACK_CHANNEL_ID`
+- OAuth設定: `vault/scripts/youtube_config/client_secret.json` に配置
+- 日次チェック: `python vault/scripts/youtube_comment_mod.py --days 1`
+- ドライラン: `python vault/scripts/youtube_comment_mod.py --dry-run`
+- Slack承認サーバー: `python vault/scripts/youtube_comment_mod.py --slack-server`
+- ペルソナ設定: `vault/scripts/youtube_persona.json` を編集して調整
