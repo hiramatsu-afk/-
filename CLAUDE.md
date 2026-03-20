@@ -42,5 +42,8 @@
 - OAuth設定: `vault/scripts/youtube_config/client_secret.json` に配置
 - 日次チェック: `python vault/scripts/youtube_comment_mod.py --days 1`
 - ドライラン: `python vault/scripts/youtube_comment_mod.py --dry-run`
+- 自動返信: `python vault/scripts/youtube_comment_mod.py --auto-reply`（Slack不要、返信案Aを自動投稿）
+- 自動返信テスト: `python vault/scripts/youtube_comment_mod.py --auto-reply --dry-run`
+- 保留返信の一括承認: `python vault/scripts/youtube_comment_mod.py --approve-all`
 - Slack承認サーバー: `python vault/scripts/youtube_comment_mod.py --slack-server`
 - ペルソナ設定: `vault/scripts/youtube_persona.json` を編集して調整

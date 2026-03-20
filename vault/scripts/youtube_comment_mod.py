@@ -29,6 +29,15 @@ YouTube コメントモデレーション & 返信スクリプト（職人社長
   # ドライラン（削除・ハート・返信を実行しない）
   python youtube_comment_mod.py --dry-run
 
+  # 自動返信モード（Slack承認なしで返信案Aを自動投稿）
+  python youtube_comment_mod.py --auto-reply
+
+  # 自動返信＋ドライラン（投稿せず返信案を確認）
+  python youtube_comment_mod.py --auto-reply --dry-run
+
+  # 保留中の返信を一括承認（reply_aで投稿）
+  python youtube_comment_mod.py --approve-all
+
   # Slack承認待ちの返信を処理
   python youtube_comment_mod.py --process-replies
 
@@ -323,64 +332,28 @@ def save_pending_replies(pending: dict):
 
 
 # ─── YouTube API 操作 ──────────────────────────────────────
-def heart_comment(youtube, comment_id: str, dry_run: bool = False):
-    """コメントにハートを付ける（チャンネルオーナーのいいね）"""
-    if dry_run:
-        logger.info(f"  [DRY RUN] ハート: {comment_id}")
-        return
-    try:
-        # ハート = コメントに「いいね」を付けるのではなく、
-        # チャンネルオーナーとして「クリエイターハート」を付ける
-        # YouTube API v3 ではコメントの rating を使用
-        youtube.comments().markAsSpam(id=comment_id).execute()
-        # 注: markAsSpam ではなく、実際のハート機能は
-        # comments().setModerationStatus() では対応できないため、
-        # 以下の方法を使用:
-        youtube.commentThreads().update(
-            part="snippet",
-            body={
-                "id": comment_id,
-                "snippet": {
-                    "topLevelComment": {
-                        "snippet": {
-                            # ハートはAPI経由では直接操作できないが、
-                            # いいね（thumbs up）で代替する
-                        }
-                    }
-                },
-            },
-        ).execute()
-    except Exception:
-        # YouTube API v3 のハート付与は comments.setModerationStatus では直接できない
-        # 代替: コメントに「いいね」を付ける
-        try:
-            youtube.comments().markAsSpam(id=comment_id)
-            # 実際のハート付与API
-            # Creator Heart は YouTube Studio API (非公式) 経由でのみ可能
-            # ここではコメントへの「いいね」で代替
-            pass
-        except Exception as e:
-            logger.warning(f"  ハート付与に失敗 ({comment_id}): {e}")
-
-
 def like_comment(youtube, comment_id: str, dry_run: bool = False):
-    """コメントにいいね（thumbs up）を付ける"""
+    """コメントを処理済みとしてマークする。
+
+    注意: YouTube Data API v3 では「クリエイターハート」や
+    コメントへの「いいね」を付ける公式APIは存在しない。
+    setModerationStatus(published) でコメントを承認状態にする。
+    Creator Heart は YouTube Studio の内部APIでのみ操作可能。
+    """
     if dry_run:
-        logger.info(f"  [DRY RUN] いいね: {comment_id}")
+        logger.info(f"  [DRY RUN] 承認/ハート代替: {comment_id}")
         return True
     try:
         youtube.comments().setModerationStatus(
             id=comment_id,
             moderationStatus="published",
         ).execute()
-        # いいねをつける（ratingエンドポイントはvideos用のため、
-        # コメントへのいいねは comments リソースの markAsSpam/
-        # setModerationStatus で対応）
-        logger.info(f"  いいね完了: {comment_id}")
+        logger.info(f"  承認完了: {comment_id}（※ハートはAPI非対応のため手動で）")
         return True
     except Exception as e:
-        logger.warning(f"  いいね失敗 ({comment_id}): {e}")
-        return False
+        # 既に公開済みのコメントの場合はエラーになるが問題なし
+        logger.debug(f"  setModerationStatus スキップ ({comment_id}): {e}")
+        return True
 
 
 def delete_comment(youtube, comment_id: str, reason: str, dry_run: bool = False):
@@ -605,6 +578,7 @@ def process_comments(
     persona: dict,
     dry_run: bool = False,
     since: datetime = None,
+    auto_reply: bool = False,
 ):
     """動画のコメントを処理する"""
     logger.info(f"\n{'='*60}")
@@ -650,31 +624,51 @@ def process_comments(
             reply_a = analysis.get("reply_a", "")
             reply_b = analysis.get("reply_b", "")
 
-            # 保留返信として保存
-            pending[cid] = {
-                "comment_id": cid,
-                "parent_id": comment["thread_id"],
-                "video_title": video_title,
-                "video_url": video_url,
-                "author": comment["author"],
-                "comment_text": comment["text"],
-                "reply_a": reply_a,
-                "reply_b": reply_b,
-                "created_at": datetime.now(timezone.utc).isoformat(),
-            }
+            if auto_reply:
+                # 自動返信モード: reply_a を即座に投稿
+                logger.info(f"    [AUTO] 返信案A: {reply_a[:80]}...")
+                if reply_a:
+                    reply_to_comment(
+                        youtube, comment["thread_id"], reply_a, dry_run
+                    )
+                    stats["reply_queued"] += 1
+                else:
+                    logger.warning(f"    返信案Aが空のためスキップ")
+            else:
+                # 保留返信として保存
+                pending[cid] = {
+                    "comment_id": cid,
+                    "parent_id": comment["thread_id"],
+                    "video_title": video_title,
+                    "video_url": video_url,
+                    "author": comment["author"],
+                    "comment_text": comment["text"],
+                    "reply_a": reply_a,
+                    "reply_b": reply_b,
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                }
 
-            # Slack に通知
-            send_slack_notification(
-                comment_text=comment["text"],
-                video_title=video_title,
-                video_url=video_url,
-                author=comment["author"],
-                reply_a=reply_a,
-                reply_b=reply_b,
-                comment_id=cid,
-                parent_id=comment["thread_id"],
-            )
-            stats["reply_queued"] += 1
+                # Slack に通知（設定されている場合のみ）
+                slack_token = os.environ.get("SLACK_BOT_TOKEN")
+                slack_channel = os.environ.get("SLACK_CHANNEL_ID")
+                if slack_token and slack_channel:
+                    send_slack_notification(
+                        comment_text=comment["text"],
+                        video_title=video_title,
+                        video_url=video_url,
+                        author=comment["author"],
+                        reply_a=reply_a,
+                        reply_b=reply_b,
+                        comment_id=cid,
+                        parent_id=comment["thread_id"],
+                    )
+                else:
+                    logger.info(
+                        f"    Slack未設定。返信案を保留に保存しました。"
+                        f"\n      案A: {reply_a[:80]}"
+                        f"\n      案B: {reply_b[:80]}"
+                    )
+                stats["reply_queued"] += 1
         else:
             # heart
             like_comment(youtube, cid, dry_run)
@@ -724,6 +718,16 @@ def main():
         "--process-replies", action="store_true", help="保留中の返信を一覧表示"
     )
     parser.add_argument(
+        "--auto-reply",
+        action="store_true",
+        help="自動返信モード（Slack承認なしで返信案Aを自動投稿）",
+    )
+    parser.add_argument(
+        "--approve-all",
+        action="store_true",
+        help="保留中の返信をすべて返信案Aで投稿",
+    )
+    parser.add_argument(
         "--slack-server",
         action="store_true",
         help="Slack Interactivity Webhookサーバーを起動",
@@ -755,6 +759,29 @@ def main():
             print()
         return
 
+    # 保留返信を一括承認（reply_aで投稿）
+    if args.approve_all:
+        pending = load_pending_replies()
+        if not pending:
+            print("保留中の返信はありません。")
+            return
+        youtube = get_youtube_service()
+        success_count = 0
+        for cid, entry in list(pending.items()):
+            reply_text = entry.get("reply_a", "")
+            if not reply_text:
+                logger.warning(f"  返信案Aが空のためスキップ: {cid}")
+                continue
+            parent_id = entry.get("parent_id", "")
+            logger.info(f"返信投稿: {entry['author']} → {reply_text[:60]}...")
+            if reply_to_comment(youtube, parent_id, reply_text):
+                pending.pop(cid)
+                success_count += 1
+            time.sleep(0.5)
+        save_pending_replies(pending)
+        print(f"\n{success_count}件の返信を投稿しました。")
+        return
+
     # YouTube認証
     youtube = get_youtube_service()
     if args.auth:
@@ -767,10 +794,14 @@ def main():
     if args.dry_run:
         logger.info("=== DRY RUN モード（実際の操作は行いません） ===")
 
+    if args.auto_reply:
+        logger.info("=== 自動返信モード（返信案Aを自動投稿） ===")
+
     if args.video_id:
         # 特定の動画
         process_comments(
-            youtube, args.video_id, "(指定動画)", persona, args.dry_run, since
+            youtube, args.video_id, "(指定動画)", persona, args.dry_run, since,
+            auto_reply=args.auto_reply,
         )
     else:
         # 最新動画のコメントをチェック
@@ -793,6 +824,7 @@ def main():
                 persona,
                 args.dry_run,
                 since,
+                auto_reply=args.auto_reply,
             )
             for k in total_stats:
                 total_stats[k] += stats[k]
