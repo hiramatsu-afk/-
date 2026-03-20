@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Obsidian Vault Dashboard</title>
+<style>
+  :root {
+    --bg: #1a1b26; --surface: #24283b; --surface2: #2f3347;
+    --text: #c0caf5; --text2: #9aa5ce; --accent: #7aa2f7;
+    --green: #9ece6a; --orange: #ff9e64; --red: #f7768e;
+    --purple: #bb9af7; --cyan: #7dcfff;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; }
+
+  .header { background: var(--surface); padding: 20px 30px; border-bottom: 1px solid var(--surface2); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px; }
+  .header h1 { font-size: 1.4em; color: var(--accent); }
+  .header .meta { color: var(--text2); font-size: 0.85em; }
+
+  .search-bar { padding: 15px 30px; background: var(--surface); border-bottom: 1px solid var(--surface2); position: sticky; top: 0; z-index: 100; }
+  .search-bar input { width: 100%; padding: 12px 18px; border-radius: 8px; border: 1px solid var(--surface2); background: var(--bg); color: var(--text); font-size: 1em; outline: none; }
+  .search-bar input:focus { border-color: var(--accent); }
+  .search-bar input::placeholder { color: var(--text2); }
+
+  .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+
+  .stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 15px; margin-bottom: 25px; }
+  .stat-card { background: var(--surface); padding: 18px; border-radius: 10px; text-align: center; }
+  .stat-card .number { font-size: 2em; font-weight: bold; color: var(--accent); }
+  .stat-card .label { font-size: 0.85em; color: var(--text2); margin-top: 4px; }
+
+  .tabs { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
+  .tab { padding: 8px 18px; border-radius: 20px; background: var(--surface); color: var(--text2); cursor: pointer; border: 1px solid transparent; font-size: 0.9em; transition: all 0.2s; }
+  .tab:hover { border-color: var(--accent); }
+  .tab.active { background: var(--accent); color: var(--bg); font-weight: 600; }
+
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 18px; }
+
+  .card { background: var(--surface); border-radius: 12px; padding: 20px; border: 1px solid var(--surface2); transition: border-color 0.2s; }
+  .card:hover { border-color: var(--accent); }
+  .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 6px; }
+  .card-date { font-size: 0.85em; color: var(--text2); }
+  .card h3 { font-size: 1.05em; margin-bottom: 10px; color: var(--text); word-break: break-word; }
+
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; font-weight: 500; }
+  .badge.platform { background: var(--purple); color: var(--bg); }
+  .badge.attendee { background: var(--surface2); color: var(--cyan); margin: 2px; }
+  .badge.source { background: var(--orange); color: var(--bg); }
+  .badge.source a { color: var(--bg); text-decoration: none; }
+  .badge.tag { background: var(--surface2); color: var(--green); margin: 3px; }
+
+  .tldv-link { font-size: 0.8em; color: var(--accent); text-decoration: none; padding: 2px 8px; border: 1px solid var(--accent); border-radius: 8px; }
+
+  .highlights h4, .actions h4 { font-size: 0.85em; color: var(--text2); margin: 10px 0 6px; }
+  .highlights ul, .actions ul { list-style: none; padding: 0; }
+  .highlights li { padding: 3px 0; font-size: 0.9em; border-left: 3px solid var(--accent); padding-left: 10px; margin-bottom: 4px; }
+  .actions li { padding: 4px 0; font-size: 0.88em; }
+  .actions li.done { color: var(--text2); text-decoration: line-through; }
+  .action-source { font-size: 0.78em; color: var(--text2); display: block; margin-top: 2px; }
+
+  .preview { font-size: 0.88em; color: var(--text2); }
+
+  .sidebar-section { background: var(--surface); border-radius: 12px; padding: 20px; margin-bottom: 18px; border: 1px solid var(--surface2); }
+  .sidebar-section h3 { font-size: 1em; color: var(--accent); margin-bottom: 12px; }
+  .sidebar-section ul { list-style: none; padding: 0; }
+  .sidebar-section li { padding: 5px 0; font-size: 0.9em; border-bottom: 1px solid var(--surface2); }
+  .sidebar-section li:last-child { border-bottom: none; }
+  .count { color: var(--text2); font-size: 0.85em; }
+
+  .two-col { display: grid; grid-template-columns: 1fr 320px; gap: 25px; }
+  @media (max-width: 900px) {
+    .two-col { grid-template-columns: 1fr; }
+    .grid { grid-template-columns: 1fr; }
+  }
+
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Obsidian Vault Dashboard</h1>
+  <div class="meta">Updated: 2026-03-20 05:51 | 5 notes</div>
+</div>
+
+<div class="search-bar">
+  <input type="text" id="searchInput" placeholder="Search meetings, attendees, keywords... (e.g. A社, 価格, 田中)">
+</div>
+
+<div class="container">
+  <div class="stats-row">
+    <div class="stat-card"><div class="number">3</div><div class="label">Meetings</div></div>
+    <div class="stat-card"><div class="number">2</div><div class="label">Research Notes</div></div>
+    <div class="stat-card"><div class="number">9</div><div class="label">Pending Actions</div></div>
+    <div class="stat-card"><div class="number">2</div><div class="label">Completed</div></div>
+    <div class="stat-card"><div class="number">5</div><div class="label">Total Notes</div></div>
+  </div>
+
+  <div class="tabs">
+    <div class="tab active" data-tab="meetings">Meetings</div>
+    <div class="tab" data-tab="research">Research</div>
+    <div class="tab" data-tab="actions">Action Items</div>
+    <div class="tab" data-tab="overview">Overview</div>
+  </div>
+
+  <div class="tab-content active" id="tab-meetings">
+    <div class="two-col">
+      <div class="grid" id="meetingGrid">
+        <div class="card meeting-card" data-search="20260318_a社_プロダクト提案mtg 田中太郎 佐藤花子 山田一郎 - **価格提案**: 月額50万円のエンタープライズプランを提案。a社は前向き。 - **導入スケジュール**: 4月中にpocを開始し、6月本番リリースを希望。 - **技術要件**: 既存のsalesforceとのapi連携が必須条件。 - **競合状況**: b社のソリューションも検討中とのこと。差別化ポイントを強調。">
+          <div class="card-header">
+            <span class="card-date">2026-03-18 14:00</span>
+            <span class="badge platform">google-meet</span> 
+          </div>
+          <h3>20260318 A社 プロダクト提案MTG</h3>
+          <div class="attendees"><span class="badge attendee">田中太郎</span><span class="badge attendee">佐藤花子</span><span class="badge attendee">山田一郎</span></div>
+          <div class="highlights">
+            <h4>Key Points</h4>
+            <ul><li>- **価格提案**: 月額50万円のエンタープライズプランを提案。A社は前向き。</li><li>- **導入スケジュール**: 4月中にPoCを開始し、6月本番リリースを希望。</li><li>- **技術要件**: 既存のSalesforceとのAPI連携が必須条件。</li><li>- **競合状況**: B社のソリューションも検討中とのこと。差別化ポイントを強調。</li></ul>
+          </div>
+          <div class="actions"><h4>Action Items</h4><ul><li class=""><input type="checkbox" > 見積書を3月20日までに送付する（山田）</li><li class=""><input type="checkbox" > Salesforce連携のAPI仕様書を共有する（山田）</li><li class=""><input type="checkbox" > PoC環境の構築スケジュールを確認する（田中）</li><li class=""><input type="checkbox" > セキュリティチェックシートを記入して返送する（佐藤）</li></ul></div>
+        </div>
+        <div class="card meeting-card" data-search="20260315_週次チーム定例 山田一郎 鈴木次郎 高橋三郎 - **a社案件進捗**: 提案書作成完了。来週mtgで提案予定。 - **b社サポートチケット**: 認証エラーの件は修正済み。パッチをリリース予定。 - **新機能開発**: ダッシュボード機能のuiレビューを来週実施。">
+          <div class="card-header">
+            <span class="card-date">2026-03-15 10:00</span>
+            <span class="badge platform">zoom</span> 
+          </div>
+          <h3>20260315 週次チーム定例</h3>
+          <div class="attendees"><span class="badge attendee">山田一郎</span><span class="badge attendee">鈴木次郎</span><span class="badge attendee">高橋三郎</span></div>
+          <div class="highlights">
+            <h4>Key Points</h4>
+            <ul><li>- **A社案件進捗**: 提案書作成完了。来週MTGで提案予定。</li><li>- **B社サポートチケット**: 認証エラーの件は修正済み。パッチをリリース予定。</li><li>- **新機能開発**: ダッシュボード機能のUIレビューを来週実施。</li></ul>
+          </div>
+          <div class="actions"><h4>Action Items</h4><ul><li class="done"><input type="checkbox" checked disabled> A社向け提案書の最終レビュー（山田）</li><li class=""><input type="checkbox" > B社パッチのリリーススケジュール確定（鈴木）</li><li class=""><input type="checkbox" > ダッシュボードUIモックの作成（高橋）</li><li class=""><input type="checkbox" > 来月の展示会の参加登録（山田）</li></ul></div>
+        </div>
+        <div class="card meeting-card" data-search="20260310_c社_初回ヒアリング 木村部長 渡辺課長 山田一郎 - **課題**: 現在のcrmシステムが古く、データ分析ができない。レポート作成に毎月3日かかっている。 - **予算**: 年間600万円程度を想定。4月の新年度予算で稟議を通す予定。 - **要望**: リアルタイムダッシュボード、カスタムレポート、モバイル対応。 - **競合**: まだ他社は検討していない。まずは当社で検討したい。">
+          <div class="card-header">
+            <span class="card-date">2026-03-10 15:00</span>
+            <span class="badge platform">teams</span> 
+          </div>
+          <h3>20260310 C社 初回ヒアリング</h3>
+          <div class="attendees"><span class="badge attendee">木村部長</span><span class="badge attendee">渡辺課長</span><span class="badge attendee">山田一郎</span></div>
+          <div class="highlights">
+            <h4>Key Points</h4>
+            <ul><li>- **課題**: 現在のCRMシステムが古く、データ分析ができない。レポート作成に毎月3日かかっている。</li><li>- **予算**: 年間600万円程度を想定。4月の新年度予算で稟議を通す予定。</li><li>- **要望**: リアルタイムダッシュボード、カスタムレポート、モバイル対応。</li><li>- **競合**: まだ他社は検討していない。まずは当社で検討したい。</li></ul>
+          </div>
+          <div class="actions"><h4>Action Items</h4><ul><li class=""><input type="checkbox" > C社の現状ワークフローのヒアリングシートを送付する（山田）</li><li class=""><input type="checkbox" > デモ環境を準備する（山田）</li><li class="done"><input type="checkbox" checked disabled> 次回打ち合わせを3月下旬に設定する（渡辺）</li></ul></div>
+        </div></div>
+      <div>
+        <div class="sidebar-section">
+          <h3>Frequent Attendees</h3>
+          <ul><li><strong>山田一郎</strong> <span class="count">3 meetings</span></li><li><strong>木村部長</strong> <span class="count">1 meetings</span></li><li><strong>渡辺課長</strong> <span class="count">1 meetings</span></li><li><strong>鈴木次郎</strong> <span class="count">1 meetings</span></li><li><strong>高橋三郎</strong> <span class="count">1 meetings</span></li><li><strong>田中太郎</strong> <span class="count">1 meetings</span></li><li><strong>佐藤花子</strong> <span class="count">1 meetings</span></li></ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="tab-content" id="tab-research">
+    <div class="grid" id="researchGrid">
+        <div class="card research-card" data-search="20260316_ai営業自動化_最新動向 genspark # ai営業自動化 最新動向 2026
+
+&gt; source: [genspark](https://www.genspark.ai/spark/ai-sales-automation-2026)
+
+## 概要
+
+2026年のai営業自動化の主要トレンドと、導入企業の成果についてまとめた調査レポート。
+
+## 要点
+- aiによる商談スコアリングが主流化。成約率の予測精度が85%以上に向上。
+- 議事録の自動要約 + アクションアイテム抽出が標準機能に。tl;dv, otter.ai, firefliesが主要プレイヤー。
+- crm連携の自動化（salesforce, hubspot）が進み、営業担当者のデータ入力時間が60%削減。
+- 価格最適化aiの導入企業が増加。競合の価格動向をリアルタイムで分析。
+
+## 詳細メモ
+
+### 議事録自動化ツールの比較
+| ツール | 対応プラットフォーム | ai要約 | crm連携 | 価格 |
+|--------|---------------------|--------|---------|------|
+| tl;dv | meet/">
+          <div class="card-header">
+            <span class="card-date">2026-03-16</span>
+            <span class="badge source"><a href="https://www.genspark.ai/spark/ai-sales-automation-2026" target="_blank">Genspark</a></span>
+          </div>
+          <h3>20260316 AI営業自動化 最新動向</h3>
+          <p class="preview"># AI営業自動化 最新動向 2026
+
+&gt; Source: [Genspark](https://www.genspark.ai/spark/ai-sales-automation-2026)
+
+## 概要
+
+2026年のAI営業自動化の主要トレンドと、導入企業の成果についてまとめた調査レポート。
+
+## 要点
+- AIによる商談スコアリングが主流化。成約率の予測精度が85%以上に向上。
+- 議事録の自動要約 + アクションアイテム抽出が標準機能に。tl;dv, Otter.ai, Firefliesが主要プレイヤー。
+- CRM連携の自動化（Salesforce, HubSpot）が進み、...</p>
+        </div>
+        <div class="card research-card" data-search="20260312_競合b社_サービス分析 genspark # 競合b社 サービス分析
+
+&gt; source: [genspark](https://www.genspark.ai)
+
+## 概要
+a社商談に向けた競合b社のサービス分析。価格、機能、サポート体制を比較。
+
+## 要点
+- b社のエンタープライズプラン: 月額45万円（80ユーザーまで）
+- api連携は基本的なrest apiのみ。graphqlやwebhookは未対応。
+- カスタマイズ性が低い。テンプレートベースのダッシュボードのみ。
+- サポート: メールのみ、sla保証なし。
+
+## 当社との比較
+
+| 項目 | 自社 | b社 |
+|------|------|-----|
+| 価格（100ユーザー） | 月額50万円 | 月額56万円（追加20ユーザー分） |
+| api | rest + graphql + webhook | rest のみ |
+| カスタマイズ | フルカスタマイズ可 | テンプレートのみ |
+| salesforce連携 | 双方向同期 | 一方向のみ |
+| サポート | 24/7 + 専任担当 | メールのみ |
+
+## 所感・次のアクショ">
+          <div class="card-header">
+            <span class="card-date">2026-03-12</span>
+            <span class="badge source">Genspark</span>
+          </div>
+          <h3>20260312 競合B社 サービス分析</h3>
+          <p class="preview"># 競合B社 サービス分析
+
+&gt; Source: [Genspark](https://www.genspark.ai)
+
+## 概要
+A社商談に向けた競合B社のサービス分析。価格、機能、サポート体制を比較。
+
+## 要点
+- B社のエンタープライズプラン: 月額45万円（80ユーザーまで）
+- API連携は基本的なREST APIのみ。GraphQLやWebhookは未対応。
+- カスタマイズ性が低い。テンプレートベースのダッシュボードのみ。
+- サポート: メールのみ、SLA保証なし。
+
+## 当社との比較
+
+| 項目 | 自社 | B社 |
+|------|------|-----|
+|...</p>
+        </div></div>
+  </div>
+
+  <div class="tab-content" id="tab-actions">
+    <div class="two-col">
+      <div class="sidebar-section">
+        <h3>Pending (9)</h3>
+        <ul><li><input type="checkbox"> C社の現状ワークフローのヒアリングシートを送付する（山田） <span class="action-source">from 20260310_C社_初回ヒアリング (2026-03-10)</span></li><li><input type="checkbox"> デモ環境を準備する（山田） <span class="action-source">from 20260310_C社_初回ヒアリング (2026-03-10)</span></li><li><input type="checkbox"> B社パッチのリリーススケジュール確定（鈴木） <span class="action-source">from 20260315_週次チーム定例 (2026-03-15)</span></li><li><input type="checkbox"> ダッシュボードUIモックの作成（高橋） <span class="action-source">from 20260315_週次チーム定例 (2026-03-15)</span></li><li><input type="checkbox"> 来月の展示会の参加登録（山田） <span class="action-source">from 20260315_週次チーム定例 (2026-03-15)</span></li><li><input type="checkbox"> 見積書を3月20日までに送付する（山田） <span class="action-source">from 20260318_A社_プロダクト提案MTG (2026-03-18)</span></li><li><input type="checkbox"> Salesforce連携のAPI仕様書を共有する（山田） <span class="action-source">from 20260318_A社_プロダクト提案MTG (2026-03-18)</span></li><li><input type="checkbox"> PoC環境の構築スケジュールを確認する（田中） <span class="action-source">from 20260318_A社_プロダクト提案MTG (2026-03-18)</span></li><li><input type="checkbox"> セキュリティチェックシートを記入して返送する（佐藤） <span class="action-source">from 20260318_A社_プロダクト提案MTG (2026-03-18)</span></li></ul>
+      </div>
+      <div class="sidebar-section">
+        <h3>Stats</h3>
+        <ul><li>research: <strong>2</strong></li><li>meeting: <strong>3</strong></li></ul>
+        <div style="margin-top: 15px;"><span class="badge tag">#meeting (3)</span><span class="badge tag">#tldv (3)</span><span class="badge tag">#research (2)</span><span class="badge tag">#genspark (2)</span><span class="badge tag">#competitive-analysis (1)</span><span class="badge tag">#AI (1)</span><span class="badge tag">#sales (1)</span><span class="badge tag">#teams (1)</span><span class="badge tag">#zoom (1)</span><span class="badge tag">#weekly (1)</span><span class="badge tag">#google-meet (1)</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="tab-content" id="tab-overview">
+    <div class="stats-row">
+      <div class="sidebar-section"><h3>By Type</h3><ul><li>research: <strong>2</strong></li><li>meeting: <strong>3</strong></li></ul></div>
+      <div class="sidebar-section"><h3>Tags</h3><div><span class="badge tag">#meeting (3)</span><span class="badge tag">#tldv (3)</span><span class="badge tag">#research (2)</span><span class="badge tag">#genspark (2)</span><span class="badge tag">#competitive-analysis (1)</span><span class="badge tag">#AI (1)</span><span class="badge tag">#sales (1)</span><span class="badge tag">#teams (1)</span><span class="badge tag">#zoom (1)</span><span class="badge tag">#weekly (1)</span><span class="badge tag">#google-meet (1)</span></div></div>
+      <div class="sidebar-section"><h3>Attendees</h3><ul><li><strong>山田一郎</strong> <span class="count">3 meetings</span></li><li><strong>木村部長</strong> <span class="count">1 meetings</span></li><li><strong>渡辺課長</strong> <span class="count">1 meetings</span></li><li><strong>鈴木次郎</strong> <span class="count">1 meetings</span></li><li><strong>高橋三郎</strong> <span class="count">1 meetings</span></li><li><strong>田中太郎</strong> <span class="count">1 meetings</span></li><li><strong>佐藤花子</strong> <span class="count">1 meetings</span></li></ul></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Tab switching
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(tc => tc.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+  });
+});
+
+// Live search
+const searchInput = document.getElementById('searchInput');
+searchInput.addEventListener('input', () => {
+  const q = searchInput.value.toLowerCase().trim();
+  document.querySelectorAll('.card').forEach(card => {
+    const text = card.dataset.search || card.textContent.toLowerCase();
+    card.classList.toggle('hidden', q && !text.includes(q));
+  });
+});
+</script>
+</body>
+</html>
