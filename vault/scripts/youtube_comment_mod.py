@@ -125,18 +125,36 @@ def get_youtube_service():
                 )
                 sys.exit(1)
             flow = InstalledAppFlow.from_client_secrets_file(
-                str(CLIENT_SECRET_PATH), SCOPES
+                str(CLIENT_SECRET_PATH), SCOPES,
+                redirect_uri="http://localhost"
             )
             # ブラウザが使えない環境ではURLを表示してコードを手動入力
-            try:
-                creds = flow.run_local_server(port=0, open_browser=False)
-            except Exception:
-                logger.info("ローカルサーバーが使えないため、手動認証モードに切替...")
-                auth_url, _ = flow.authorization_url(prompt="consent")
+            if os.environ.get("YOUTUBE_AUTH_HEADLESS"):
+                auth_url, _ = flow.authorization_url(
+                    prompt="consent", access_type="offline"
+                )
                 print(f"\n以下のURLをブラウザで開いてください:\n{auth_url}\n")
-                code = input("認証コードを貼り付けてください: ").strip()
-                flow.fetch_token(code=code)
+                print("認証後、リダイレクトされたURL（localhost で始まるページ）の")
+                print("アドレスバーのURL全体をコピーして貼り付けてください。\n")
+                redirect_response = input("リダイレクトURL: ").strip()
+                flow.fetch_token(authorization_response=redirect_response)
                 creds = flow.credentials
+            else:
+                try:
+                    flow2 = InstalledAppFlow.from_client_secrets_file(
+                        str(CLIENT_SECRET_PATH), SCOPES
+                    )
+                    creds = flow2.run_local_server(port=0, open_browser=False)
+                except Exception:
+                    logger.info("ローカルサーバーが使えないため、手動認証モードに切替...")
+                    auth_url, _ = flow.authorization_url(
+                        prompt="consent", access_type="offline"
+                    )
+                    print(f"\n以下のURLをブラウザで開いてください:\n{auth_url}\n")
+                    print("認証後、リダイレクトされたURL全体を貼り付けてください。\n")
+                    redirect_response = input("リダイレクトURL: ").strip()
+                    flow.fetch_token(authorization_response=redirect_response)
+                    creds = flow.credentials
         CONFIG_DIR.mkdir(parents=True, exist_ok=True)
         with open(TOKEN_PATH, "w") as token_file:
             token_file.write(creds.to_json())
