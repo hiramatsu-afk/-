@@ -77,8 +77,36 @@
 - 自動同期: `tldv_webhook_server.py` を起動 + tl;dv Webhookに登録
 - MCP Server: `tldv-mcp-server` でClaude Desktopから直接会議データにアクセス可能
 
+## 日次ワークフロー
+- `vault/scripts/daily_workflow.py` - 日次業務自動化
+- **朝のブリーフィング**: `python vault/scripts/daily_workflow.py --morning`
+- **夕方の振り返り**: `python vault/scripts/daily_workflow.py --evening`
+- **全データ同期**: `python vault/scripts/daily_workflow.py --sync-all`
+- cron設定: 毎朝7時ブリーフィング / 毎日18時振り返り / 毎日21時tl;dv同期
+
 ## MCP連携（Claude Code / Claude Desktop）
 - **Gmail**: メールの検索・閲覧・下書き作成
 - **Slack**: チャンネル閲覧・メッセージ送信・検索
 - **Google Calendar**: 予定の確認・作成・空き時間検索
 - **tl;dv**: 会議データの直接アクセス
+
+## メール自動化（Gmail MCP）
+Claudeへの依頼例:
+- 「未読メールを確認して、重要なものをリストアップして」
+- 「○○さんからのメールを検索して、内容をまとめて」
+- 「△△の件で返信の下書きを作成して」
+- 「今週届いた加盟店からのメールを一覧にして」
+※ Gmail MCPのパーミッション設定が必要（Google Cloud Console で Gmail API を有効化）
+
+## Slack自動化
+Claudeへの依頼例:
+- 「#generalチャンネルの最新メッセージを確認して」
+- 「○○さんにSlackで連絡して」
+- 「今週のSlackで重要な会話をまとめて」
+
+## カレンダー連携
+Claudeへの依頼例:
+- 「今週のスケジュールを確認して日次ノートに反映して」
+- 「来週の空き時間を教えて」
+- 「○○さんとの打ち合わせを設定して」
+- 「面談予定の事前準備ノートを作成して」（カレンダー情報から自動で顧客情報を抽出）
