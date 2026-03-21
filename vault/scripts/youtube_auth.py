@@ -27,7 +27,7 @@ def main():
 
     flow = InstalledAppFlow.from_client_secrets_file(
         str(CLIENT_SECRET_PATH), SCOPES,
-        redirect_uri="http://localhost"
+        redirect_uri="http://localhost:8080"
     )
 
     auth_url, _ = flow.authorization_url(
