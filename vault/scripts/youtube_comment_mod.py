@@ -127,7 +127,16 @@ def get_youtube_service():
             flow = InstalledAppFlow.from_client_secrets_file(
                 str(CLIENT_SECRET_PATH), SCOPES
             )
-            creds = flow.run_local_server(port=0)
+            # ブラウザが使えない環境ではURLを表示してコードを手動入力
+            try:
+                creds = flow.run_local_server(port=0, open_browser=False)
+            except Exception:
+                logger.info("ローカルサーバーが使えないため、手動認証モードに切替...")
+                auth_url, _ = flow.authorization_url(prompt="consent")
+                print(f"\n以下のURLをブラウザで開いてください:\n{auth_url}\n")
+                code = input("認証コードを貼り付けてください: ").strip()
+                flow.fetch_token(code=code)
+                creds = flow.credentials
         CONFIG_DIR.mkdir(parents=True, exist_ok=True)
         with open(TOKEN_PATH, "w") as token_file:
             token_file.write(creds.to_json())
