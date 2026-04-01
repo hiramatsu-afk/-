@@ -1,0 +1,260 @@
+{% extends "base.html" %}
+{% set active_page = "upload" %}
+{% block title %}写真アップロード - 品質管理{% endblock %}
+
+{% block content %}
+<h2 style="margin-bottom:20px;">写真アップロード & 品質チェック</h2>
+
+<div class="grid-2">
+  <!-- Left: Upload Form -->
+  <div>
+    <form id="uploadForm" enctype="multipart/form-data">
+      <div class="card">
+        <h3>📷 写真を選択</h3>
+        <div class="upload-zone" id="dropZone">
+          <input type="file" name="photo" id="photoInput" accept="image/*" capture="environment">
+          <div class="icon">📸</div>
+          <div class="text">クリックまたはドラッグ＆ドロップ<br><small>JPG, PNG, HEIC, WebP（最大20MB）</small></div>
+        </div>
+        <div id="preview" class="hidden" style="margin-top:14px;text-align:center;">
+          <img id="previewImg" style="max-width:100%;max-height:250px;border-radius:8px;border:1px solid var(--surface2);">
+          <div id="previewName" style="font-size:0.85em;color:var(--text2);margin-top:6px;"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>📋 検査情報</h3>
+        <div class="form-group">
+          <label>検査カテゴリ *</label>
+          <select name="category" id="categorySelect" required>
+            <option value="">選択してください</option>
+            {% for key, cat in categories.items() %}
+            <option value="{{ key }}">{{ cat.icon }} {{ cat.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div id="checklistArea" class="hidden" style="margin-bottom:16px;">
+          <label style="font-size:0.88em;color:var(--text2);margin-bottom:6px;display:block;font-weight:500;">チェック項目</label>
+          <div id="checklistItems"></div>
+        </div>
+
+        <div class="grid-2">
+          <div class="form-group">
+            <label>現場名 *</label>
+            <input type="text" name="site_name" placeholder="例: Aマンション新築工事" required>
+          </div>
+          <div class="form-group">
+            <label>検査担当者</label>
+            <input type="text" name="inspector" placeholder="例: 田中太郎">
+          </div>
+        </div>
+        <div class="grid-2">
+          <div class="form-group">
+            <label>階数・フロア</label>
+            <input type="text" name="floor" placeholder="例: 3F">
+          </div>
+          <div class="form-group">
+            <label>場所・部位</label>
+            <input type="text" name="location" placeholder="例: 梁 B1-B2間">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>備考</label>
+          <textarea name="notes" placeholder="特記事項があれば記入"></textarea>
+        </div>
+      </div>
+
+      <button type="submit" class="btn btn-primary" id="submitBtn" style="width:100%;padding:14px;font-size:1em;" disabled>
+        📤 アップロード & 品質チェック
+      </button>
+    </form>
+  </div>
+
+  <!-- Right: Recent & Info -->
+  <div>
+    <div class="card">
+      <h3>✅ 自動チェック項目</h3>
+      <table>
+        <tr><td>📐 解像度</td><td style="color:var(--text2)">800x600px以上</td></tr>
+        <tr><td>💡 明るさ</td><td style="color:var(--text2)">適正範囲内</td></tr>
+        <tr><td>🔍 コントラスト</td><td style="color:var(--text2)">対象の視認性</td></tr>
+        <tr><td>📅 撮影日時</td><td style="color:var(--text2)">EXIF確認</td></tr>
+        <tr><td>⏰ 鮮度</td><td style="color:var(--text2)">48時間以内</td></tr>
+      </table>
+    </div>
+
+    <div class="card">
+      <h3>📊 直近の検査（7日間）</h3>
+      {% if recent %}
+      <table>
+        <thead><tr><th>日時</th><th>カテゴリ</th><th>結果</th></tr></thead>
+        <tbody>
+        {% for r in recent %}
+        <tr>
+          <td style="font-size:0.82em;">{{ r.datetime[:16] }}</td>
+          <td>{{ r.category_name }}</td>
+          <td><span class="badge badge-{{ r.judgment|lower }}">{{ r.judgment }}</span></td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p style="color:var(--text2);font-size:0.9em;">まだ検査データがありません。</p>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- Result Modal -->
+<div id="resultModal" class="modal-overlay hidden">
+  <div class="modal">
+    <button class="close-btn" onclick="closeModal()">&times;</button>
+    <div id="resultContent"></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+const categories = {{ categories | tojson }};
+
+// File preview
+const photoInput = document.getElementById('photoInput');
+const dropZone = document.getElementById('dropZone');
+const preview = document.getElementById('preview');
+const previewImg = document.getElementById('previewImg');
+const submitBtn = document.getElementById('submitBtn');
+
+photoInput.addEventListener('change', handleFile);
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('dragover');
+  if (e.dataTransfer.files.length) {
+    photoInput.files = e.dataTransfer.files;
+    handleFile();
+  }
+});
+
+function handleFile() {
+  const file = photoInput.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    previewImg.src = e.target.result;
+    document.getElementById('previewName').textContent = file.name + ' (' + (file.size/1024).toFixed(0) + 'KB)';
+    preview.classList.remove('hidden');
+    submitBtn.disabled = false;
+  };
+  reader.readAsDataURL(file);
+}
+
+// Category checklist
+const categorySelect = document.getElementById('categorySelect');
+const checklistArea = document.getElementById('checklistArea');
+const checklistItems = document.getElementById('checklistItems');
+
+categorySelect.addEventListener('change', () => {
+  const cat = categories[categorySelect.value];
+  if (cat && cat.checks) {
+    checklistItems.innerHTML = cat.checks.map(c =>
+      `<label style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:0.9em;cursor:pointer;">
+        <input type="checkbox" name="checklist" value="${c}" style="width:auto;">
+        ${c}
+      </label>`
+    ).join('');
+    checklistArea.classList.remove('hidden');
+  } else {
+    checklistArea.classList.add('hidden');
+  }
+});
+
+// Upload
+document.getElementById('uploadForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  submitBtn.disabled = true;
+  submitBtn.textContent = '⏳ チェック中...';
+
+  const formData = new FormData(e.target);
+  try {
+    const resp = await fetch('/upload', { method: 'POST', body: formData });
+    const data = await resp.json();
+
+    if (data.error) {
+      alert(data.error);
+      submitBtn.disabled = false;
+      submitBtn.textContent = '📤 アップロード & 品質チェック';
+      return;
+    }
+
+    showResult(data.record);
+  } catch (err) {
+    alert('エラーが発生しました: ' + err.message);
+  }
+  submitBtn.disabled = false;
+  submitBtn.textContent = '📤 アップロード & 品質チェック';
+});
+
+function showResult(record) {
+  const isOK = record.judgment === 'OK';
+  const cls = isOK ? 'result-ok' : 'result-ng';
+  const icon = isOK ? '✅' : '❌';
+  const color = isOK ? 'var(--green)' : 'var(--red)';
+
+  let issuesHtml = '';
+  if (record.issues && record.issues.length > 0) {
+    issuesHtml = '<ul class="issue-list">' + record.issues.map(i => `<li>${i}</li>`).join('') + '</ul>';
+  }
+
+  const details = record.details || {};
+  let detailRows = '';
+  if (details.resolution) detailRows += `<tr><td>解像度</td><td>${details.resolution}</td></tr>`;
+  if (details.brightness !== undefined) detailRows += `<tr><td>明るさ</td><td>${details.brightness}</td></tr>`;
+  if (details.contrast !== undefined) detailRows += `<tr><td>コントラスト</td><td>${details.contrast}</td></tr>`;
+  if (details.file_size_kb) detailRows += `<tr><td>ファイルサイズ</td><td>${details.file_size_kb} KB</td></tr>`;
+  if (details.exif && details.exif.datetime) detailRows += `<tr><td>撮影日時</td><td>${details.exif.datetime}</td></tr>`;
+  if (details.exif && details.exif.camera_model) detailRows += `<tr><td>カメラ</td><td>${details.exif.camera_make || ''} ${details.exif.camera_model}</td></tr>`;
+
+  document.getElementById('resultContent').innerHTML = `
+    <div class="${cls}">
+      <h2 style="color:${color};margin-bottom:12px;">${icon} 判定結果: ${record.judgment}</h2>
+      <div style="display:flex;justify-content:space-between;margin-bottom:14px;">
+        <div>
+          <div style="font-size:0.88em;color:var(--text2);">スコア</div>
+          <div style="font-size:2em;font-weight:bold;color:${color};">${record.score}</div>
+        </div>
+        <div style="text-align:right;">
+          <div style="font-size:0.88em;color:var(--text2);">${record.category_name}</div>
+          <div style="font-size:0.88em;color:var(--text2);">${record.site_name}</div>
+        </div>
+      </div>
+      <div class="progress-bar" style="height:12px;margin-bottom:16px;">
+        <div class="fill ${isOK ? 'fill-ok' : 'fill-ng'}" style="width:${record.score}%"></div>
+      </div>
+    </div>
+
+    ${issuesHtml}
+
+    ${detailRows ? '<h3 style="margin:16px 0 8px;font-size:0.95em;">画像解析結果</h3><table>' + detailRows + '</table>' : ''}
+
+    <div style="margin-top:20px;display:flex;gap:10px;">
+      <button class="btn btn-outline" onclick="closeModal()" style="flex:1;">閉じる</button>
+      <a href="/dashboard" class="btn btn-primary" style="flex:1;text-align:center;">ダッシュボード</a>
+    </div>
+  `;
+
+  document.getElementById('resultModal').classList.remove('hidden');
+}
+
+function closeModal() {
+  document.getElementById('resultModal').classList.add('hidden');
+  location.reload();
+}
+
+document.getElementById('resultModal').addEventListener('click', e => {
+  if (e.target === e.currentTarget) closeModal();
+});
+</script>
+{% endblock %}

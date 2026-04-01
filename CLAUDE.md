@@ -21,6 +21,7 @@
 - `vault/scripts/bookmarklet.js` - ブラウザからWebページをVaultに取り込むブックマークレット
 - `vault/scripts/supervisor_evaluation.py` - 現場監督評価（識学×ANDPAD×クオリツ）
 - `vault/scripts/generate_evaluation_dashboard.py` - 評価ダッシュボード生成
+- `vault/scripts/quality_app/` - 写真品質管理Webアプリ（Flask）
 
 ## Claudeへの指示
 - ノートを保存する際は `save_to_vault.py` を使うか、直接Markdownファイルを作成する
@@ -46,3 +47,11 @@
 - 期間サマリー: `python vault/scripts/supervisor_evaluation.py --summary --period YYYY-MM`
 - ダッシュボード生成: `python vault/scripts/generate_evaluation_dashboard.py`
 - API連携: 環境変数 `ANDPAD_API_KEY`, `QUALITEE_API_KEY` を設定（未設定時はシミュレーション）
+
+## 写真品質管理アプリ
+- 起動: `python vault/scripts/quality_app/app.py` → http://localhost:5000
+- 機能: 写真アップロード → 自動OK/NG判定 → 検査履歴・ダッシュボード
+- 検査カテゴリ: 配筋/型枠/コンクリート/仕上げ/防水/設備
+- 自動チェック: 解像度・明るさ・コントラスト・EXIF撮影日時・鮮度
+- API: `/api/export?period=YYYY-MM` でクオリツ互換メトリクス出力 → 評価連携
+- 手動判定修正: 検査履歴から OK↔NG を修正可能（学習データとして蓄積）

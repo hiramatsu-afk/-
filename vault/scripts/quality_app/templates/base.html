@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% block title %}写真品質管理{% endblock %}</title>
+<style>
+  :root {
+    --bg: #1a1b26; --surface: #24283b; --surface2: #2f3347;
+    --text: #c0caf5; --text2: #9aa5ce; --accent: #7aa2f7;
+    --green: #9ece6a; --orange: #ff9e64; --red: #f7768e;
+    --purple: #bb9af7; --cyan: #7dcfff; --yellow: #e0af68;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, 'Segoe UI', 'Hiragino Kaku Gothic ProN', sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; }
+
+  .navbar { background: var(--surface); padding: 12px 24px; border-bottom: 1px solid var(--surface2); display: flex; align-items: center; gap: 20px; position: sticky; top: 0; z-index: 200; }
+  .navbar .logo { font-size: 1.2em; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .navbar nav { display: flex; gap: 4px; }
+  .navbar nav a { padding: 6px 14px; border-radius: 8px; color: var(--text2); text-decoration: none; font-size: 0.9em; transition: all 0.2s; }
+  .navbar nav a:hover { background: var(--surface2); color: var(--text); }
+  .navbar nav a.active { background: var(--accent); color: var(--bg); font-weight: 600; }
+
+  .container { max-width: 1200px; margin: 0 auto; padding: 24px; }
+
+  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 10px 20px; border-radius: 8px; border: none; font-size: 0.9em; cursor: pointer; font-weight: 600; transition: all 0.2s; text-decoration: none; }
+  .btn-primary { background: var(--accent); color: var(--bg); }
+  .btn-primary:hover { opacity: 0.9; transform: translateY(-1px); }
+  .btn-success { background: var(--green); color: var(--bg); }
+  .btn-danger { background: var(--red); color: var(--bg); }
+  .btn-outline { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
+  .btn-sm { padding: 5px 12px; font-size: 0.82em; }
+
+  .card { background: var(--surface); border-radius: 12px; padding: 20px; border: 1px solid var(--surface2); margin-bottom: 16px; }
+  .card h3 { margin-bottom: 12px; color: var(--text); font-size: 1.05em; }
+
+  .badge { display: inline-block; padding: 3px 10px; border-radius: 10px; font-size: 0.78em; font-weight: 600; }
+  .badge-ok { background: var(--green); color: var(--bg); }
+  .badge-ng { background: var(--red); color: #fff; }
+  .badge-pending { background: var(--orange); color: var(--bg); }
+
+  .stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; margin-bottom: 24px; }
+  .stat-card { background: var(--surface); padding: 16px; border-radius: 10px; text-align: center; border: 1px solid var(--surface2); }
+  .stat-card .number { font-size: 1.8em; font-weight: bold; color: var(--accent); }
+  .stat-card .label { font-size: 0.82em; color: var(--text2); margin-top: 2px; }
+
+  .form-group { margin-bottom: 16px; }
+  .form-group label { display: block; font-size: 0.88em; color: var(--text2); margin-bottom: 6px; font-weight: 500; }
+  .form-group input, .form-group select, .form-group textarea {
+    width: 100%; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--surface2);
+    background: var(--bg); color: var(--text); font-size: 0.95em; outline: none;
+  }
+  .form-group input:focus, .form-group select:focus, .form-group textarea:focus { border-color: var(--accent); }
+  .form-group textarea { resize: vertical; min-height: 80px; }
+
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  @media (max-width: 768px) {
+    .grid-2, .grid-3 { grid-template-columns: 1fr; }
+    .navbar { flex-wrap: wrap; }
+  }
+
+  table { width: 100%; border-collapse: collapse; }
+  th { background: var(--surface2); color: var(--text2); padding: 10px 12px; text-align: left; font-size: 0.85em; }
+  td { padding: 10px 12px; border-bottom: 1px solid var(--surface2); font-size: 0.9em; }
+  tr:hover td { background: rgba(122,162,247,0.05); }
+
+  .progress-bar { height: 8px; background: var(--surface2); border-radius: 4px; overflow: hidden; }
+  .progress-bar .fill { height: 100%; border-radius: 4px; transition: width 0.5s ease; }
+  .fill-ok { background: var(--green); }
+  .fill-ng { background: var(--red); }
+  .fill-accent { background: var(--accent); }
+
+  .hidden { display: none !important; }
+
+  /* Upload zone */
+  .upload-zone {
+    border: 2px dashed var(--surface2); border-radius: 12px; padding: 40px 20px;
+    text-align: center; cursor: pointer; transition: all 0.3s; position: relative;
+  }
+  .upload-zone:hover, .upload-zone.dragover { border-color: var(--accent); background: rgba(122,162,247,0.05); }
+  .upload-zone input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+  .upload-zone .icon { font-size: 2.5em; margin-bottom: 8px; }
+  .upload-zone .text { color: var(--text2); font-size: 0.9em; }
+
+  /* Result modal */
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 300; display: flex; align-items: center; justify-content: center; }
+  .modal { background: var(--surface); border-radius: 16px; padding: 28px; max-width: 550px; width: 90%; max-height: 80vh; overflow-y: auto; border: 1px solid var(--surface2); }
+  .modal h2 { margin-bottom: 16px; }
+  .modal .close-btn { float: right; background: none; border: none; color: var(--text2); font-size: 1.4em; cursor: pointer; }
+
+  .result-ok { border-left: 4px solid var(--green); padding-left: 16px; }
+  .result-ng { border-left: 4px solid var(--red); padding-left: 16px; }
+
+  .issue-list { list-style: none; padding: 0; }
+  .issue-list li { padding: 8px 12px; background: rgba(247,118,142,0.1); border-radius: 6px; margin-bottom: 6px; font-size: 0.9em; color: var(--red); }
+  .issue-list li::before { content: "⚠ "; }
+
+  .thumbnail { width: 60px; height: 60px; object-fit: cover; border-radius: 6px; border: 1px solid var(--surface2); }
+</style>
+{% block extra_head %}{% endblock %}
+</head>
+<body>
+
+<div class="navbar">
+  <a href="/" class="logo">📷 品質管理</a>
+  <nav>
+    <a href="/" class="{% if active_page == 'upload' %}active{% endif %}">アップロード</a>
+    <a href="/dashboard" class="{% if active_page == 'dashboard' %}active{% endif %}">ダッシュボード</a>
+    <a href="/history" class="{% if active_page == 'history' %}active{% endif %}">検査履歴</a>
+  </nav>
+</div>
+
+<div class="container">
+  {% block content %}{% endblock %}
+</div>
+
+{% block extra_scripts %}{% endblock %}
+</body>
+</html>

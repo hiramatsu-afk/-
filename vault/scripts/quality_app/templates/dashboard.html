@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+{% set active_page = "dashboard" %}
+{% block title %}ダッシュボード - 品質管理{% endblock %}
+
+{% block content %}
+<h2 style="margin-bottom:20px;">📊 品質管理ダッシュボード</h2>
+
+<!-- Stats Row -->
+<div class="stats-row">
+  <div class="stat-card">
+    <div class="number">{{ data.stats.total }}</div>
+    <div class="label">総検査数</div>
+  </div>
+  <div class="stat-card">
+    <div class="number" style="color:var(--green)">{{ data.stats.ok }}</div>
+    <div class="label">OK件数</div>
+  </div>
+  <div class="stat-card">
+    <div class="number" style="color:var(--red)">{{ data.stats.ng }}</div>
+    <div class="label">NG件数</div>
+  </div>
+  <div class="stat-card">
+    <div class="number" style="color:{% if data.pass_rate >= 90 %}var(--green){% elif data.pass_rate >= 70 %}var(--orange){% else %}var(--red){% endif %}">{{ data.pass_rate }}%</div>
+    <div class="label">合格率</div>
+  </div>
+</div>
+
+<!-- Category Breakdown -->
+<div class="card">
+  <h3>🔍 カテゴリ別 合格率</h3>
+  <div style="margin-top:12px;">
+    {% for key, cat in data.category_stats.items() %}
+    {% if cat.total > 0 %}
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">
+      <span style="width:140px;font-size:0.9em;">{{ cat.icon }} {{ cat.name }}</span>
+      <div style="flex:1;">
+        <div class="progress-bar" style="height:24px;position:relative;">
+          <div class="fill {% if cat.pass_rate >= 90 %}fill-ok{% elif cat.pass_rate >= 70 %}fill-accent{% else %}fill-ng{% endif %}"
+               style="width:{{ cat.pass_rate }}%"></div>
+          <span style="position:absolute;right:8px;top:50%;transform:translateY(-50%);font-size:0.82em;font-weight:600;color:var(--text);">
+            {{ cat.pass_rate }}% ({{ cat.ok }}/{{ cat.total }})
+          </span>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+    {% endfor %}
+
+    {% set has_data = data.category_stats.values() | selectattr('total', 'gt', 0) | list %}
+    {% if not has_data %}
+    <p style="color:var(--text2);font-size:0.9em;">まだ検査データがありません。</p>
+    {% endif %}
+  </div>
+</div>
+
+<div class="grid-2">
+  <!-- Site Stats -->
+  <div class="card">
+    <h3>🏗️ 現場別 合格率</h3>
+    {% if data.site_stats %}
+    <table>
+      <thead><tr><th>現場名</th><th>検査数</th><th>合格率</th><th></th></tr></thead>
+      <tbody>
+      {% for site, s in data.site_stats.items() | sort(attribute='1.pass_rate', reverse=True) %}
+      <tr>
+        <td>{{ site }}</td>
+        <td>{{ s.total }}</td>
+        <td style="color:{% if s.pass_rate >= 90 %}var(--green){% elif s.pass_rate >= 70 %}var(--orange){% else %}var(--red){% endif %}">
+          {{ s.pass_rate }}%
+        </td>
+        <td>
+          <div class="progress-bar" style="width:100px;">
+            <div class="fill {% if s.pass_rate >= 90 %}fill-ok{% elif s.pass_rate >= 70 %}fill-accent{% else %}fill-ng{% endif %}"
+                 style="width:{{ s.pass_rate }}%"></div>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p style="color:var(--text2);font-size:0.9em;">データなし</p>
+    {% endif %}
+  </div>
+
+  <!-- Top NG Reasons -->
+  <div class="card">
+    <h3>⚠️ NG理由ランキング</h3>
+    {% if data.top_ng_reasons %}
+    <table>
+      <thead><tr><th>#</th><th>理由</th><th>件数</th></tr></thead>
+      <tbody>
+      {% for reason, count in data.top_ng_reasons %}
+      <tr>
+        <td>{{ loop.index }}</td>
+        <td style="font-size:0.88em;">{{ reason[:40] }}{% if reason|length > 40 %}...{% endif %}</td>
+        <td><strong>{{ count }}</strong></td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p style="color:var(--text2);font-size:0.9em;">NG検出なし 👍</p>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Daily Trend -->
+<div class="card">
+  <h3>📈 日別トレンド（直近14日）</h3>
+  <div style="overflow-x:auto;margin-top:12px;">
+    <div style="display:flex;align-items:flex-end;gap:4px;min-height:120px;padding:10px 0;">
+      {% for date, d in data.daily_trend.items() %}
+      {% set max_height = 100 %}
+      {% set bar_h = (d.total * 8) if d.total > 0 else 0 %}
+      {% set ok_h = (d.ok * 8) if d.ok > 0 else 0 %}
+      <div style="flex:1;display:flex;flex-direction:column;align-items:center;min-width:50px;">
+        <div style="font-size:0.7em;color:var(--text2);margin-bottom:4px;">{{ d.total }}</div>
+        <div style="display:flex;flex-direction:column;width:100%;max-width:36px;">
+          {% if d.ng > 0 %}
+          <div style="height:{{ d.ng * 8 }}px;background:var(--red);border-radius:3px 3px 0 0;"></div>
+          {% endif %}
+          {% if d.ok > 0 %}
+          <div style="height:{{ ok_h }}px;background:var(--green);border-radius:{% if d.ng == 0 %}3px 3px{% else %}0 0{% endif %} 0 0;"></div>
+          {% endif %}
+          {% if d.total == 0 %}
+          <div style="height:2px;background:var(--surface2);"></div>
+          {% endif %}
+        </div>
+        <div style="font-size:0.65em;color:var(--text2);margin-top:4px;writing-mode:vertical-rl;">{{ date[5:] }}</div>
+      </div>
+      {% endfor %}
+    </div>
+    <div style="display:flex;gap:16px;font-size:0.78em;color:var(--text2);margin-top:8px;">
+      <span><span style="display:inline-block;width:12px;height:12px;background:var(--green);border-radius:2px;vertical-align:middle;"></span> OK</span>
+      <span><span style="display:inline-block;width:12px;height:12px;background:var(--red);border-radius:2px;vertical-align:middle;"></span> NG</span>
+    </div>
+  </div>
+</div>
+
+<!-- Recent Inspections -->
+<div class="card">
+  <h3>🕐 直近の検査</h3>
+  {% if data.recent %}
+  <table>
+    <thead>
+      <tr><th>日時</th><th>カテゴリ</th><th>現場</th><th>担当</th><th>結果</th><th>スコア</th></tr>
+    </thead>
+    <tbody>
+    {% for r in data.recent %}
+    <tr>
+      <td style="font-size:0.82em;">{{ r.datetime[:16] }}</td>
+      <td>{{ r.category_name }}</td>
+      <td>{{ r.site_name }}</td>
+      <td>{{ r.inspector }}</td>
+      <td><span class="badge badge-{{ r.judgment|lower }}">{{ r.judgment }}</span></td>
+      <td>{{ r.score }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <div style="margin-top:12px;text-align:right;">
+    <a href="/history" class="btn btn-outline btn-sm">全検査履歴 →</a>
+  </div>
+  {% else %}
+  <p style="color:var(--text2);font-size:0.9em;">まだ検査データがありません。</p>
+  {% endif %}
+</div>
+
+<!-- API Info -->
+<div class="card" style="border-color:var(--accent);">
+  <h3>🔗 API連携</h3>
+  <table>
+    <tr><td><code>/api/stats</code></td><td>ダッシュボードデータ（JSON）</td></tr>
+    <tr><td><code>/api/export?period=YYYY-MM</code></td><td>クオリツ互換メトリクス（評価連携用）</td></tr>
+    <tr><td><code>/api/inspections</code></td><td>全検査データ（JSON）</td></tr>
+  </table>
+</div>
+{% endblock %}
