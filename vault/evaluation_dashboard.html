@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>現場監督評価ダッシュボード</title>
+<style>
+  :root {
+    --bg: #1a1b26; --surface: #24283b; --surface2: #2f3347;
+    --text: #c0caf5; --text2: #9aa5ce; --accent: #7aa2f7;
+    --green: #9ece6a; --orange: #ff9e64; --red: #f7768e;
+    --purple: #bb9af7; --cyan: #7dcfff;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, 'Segoe UI', 'Hiragino Kaku Gothic ProN', sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; }
+
+  .header { background: var(--surface); padding: 20px 30px; border-bottom: 1px solid var(--surface2); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px; }
+  .header h1 { font-size: 1.4em; color: var(--accent); }
+  .header .subtitle { font-size: 0.85em; color: var(--text2); }
+  .header .meta { color: var(--text2); font-size: 0.85em; }
+
+  .search-bar { padding: 15px 30px; background: var(--surface); border-bottom: 1px solid var(--surface2); position: sticky; top: 0; z-index: 100; }
+  .search-bar input { width: 100%; padding: 12px 18px; border-radius: 8px; border: 1px solid var(--surface2); background: var(--bg); color: var(--text); font-size: 1em; outline: none; }
+  .search-bar input:focus { border-color: var(--accent); }
+  .search-bar input::placeholder { color: var(--text2); }
+
+  .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+
+  .stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; margin-bottom: 25px; }
+  .stat-card { background: var(--surface); padding: 18px; border-radius: 10px; text-align: center; }
+  .stat-card .number { font-size: 2em; font-weight: bold; color: var(--accent); }
+  .stat-card .label { font-size: 0.85em; color: var(--text2); margin-top: 4px; }
+
+  .tabs { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
+  .tab { padding: 8px 18px; border-radius: 20px; background: var(--surface); color: var(--text2); cursor: pointer; border: 1px solid transparent; font-size: 0.9em; transition: all 0.2s; }
+  .tab:hover { border-color: var(--accent); }
+  .tab.active { background: var(--accent); color: var(--bg); font-weight: 600; }
+
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 18px; }
+
+  .card { background: var(--surface); border-radius: 12px; padding: 20px; border: 1px solid var(--surface2); transition: border-color 0.2s; }
+  .card:hover { border-color: var(--accent); }
+  .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .card h3 { font-size: 1.15em; margin-bottom: 4px; color: var(--text); }
+
+  .rank { font-size: 1.4em; font-weight: bold; color: var(--text2); }
+  .grade-large { font-size: 2em; font-weight: bold; }
+  .site-name { font-size: 0.85em; color: var(--text2); margin-bottom: 12px; }
+
+  .score-bar-container { position: relative; height: 28px; background: var(--surface2); border-radius: 14px; margin-bottom: 14px; overflow: hidden; }
+  .score-bar { height: 100%; border-radius: 14px; transition: width 0.6s ease; }
+  .score-label { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-weight: bold; font-size: 0.9em; }
+
+  .category-breakdown { margin: 10px 0; }
+  .cat-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .cat-label { font-size: 0.78em; color: var(--text2); width: 130px; text-align: right; flex-shrink: 0; }
+  .cat-bar-bg { flex: 1; height: 8px; background: var(--surface2); border-radius: 4px; overflow: hidden; }
+  .cat-bar { height: 100%; background: var(--accent); border-radius: 4px; transition: width 0.6s ease; }
+  .cat-score { font-size: 0.78em; color: var(--text2); width: 35px; }
+
+  .trend { font-size: 0.8em; color: var(--text2); margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--surface2); }
+  .period { font-size: 0.78em; color: var(--text2); margin-top: 4px; }
+
+  .grade-badge { display: inline-block; padding: 4px 14px; border-radius: 12px; font-size: 0.9em; font-weight: 700; margin: 2px; }
+  .grade-badge-sm { display: inline-block; padding: 2px 10px; border-radius: 10px; font-size: 0.8em; font-weight: 700; }
+
+  table { width: 100%; border-collapse: collapse; }
+  th { background: var(--surface2); color: var(--text2); padding: 10px 12px; text-align: left; font-size: 0.85em; position: sticky; top: 0; }
+  td { padding: 10px 12px; border-bottom: 1px solid var(--surface2); font-size: 0.9em; }
+  tr:hover td { background: var(--surface2); }
+
+  .legend { display: flex; gap: 15px; flex-wrap: wrap; margin-bottom: 15px; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 0.85em; color: var(--text2); }
+  .legend-dot { width: 12px; height: 12px; border-radius: 50%; }
+
+  .hidden { display: none !important; }
+
+  @media (max-width: 900px) {
+    .grid { grid-template-columns: 1fr; }
+    .stats-row { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <h1>現場監督評価ダッシュボード</h1>
+    <div class="subtitle">識学 × ANDPAD × クオリツ</div>
+  </div>
+  <div class="meta">
+    更新: 2026-04-01 07:52 | 6件の評価
+  </div>
+</div>
+
+<div class="search-bar">
+  <input type="text" id="searchInput" placeholder="監督名、現場名で検索...">
+</div>
+
+<div class="container">
+  <div class="stats-row">
+    <div class="stat-card">
+      <div class="number">6</div>
+      <div class="label">総評価数</div>
+    </div>
+    <div class="stat-card">
+      <div class="number">5</div>
+      <div class="label">評価対象者</div>
+    </div>
+    <div class="stat-card">
+      <div class="number">86.3</div>
+      <div class="label">平均スコア</div>
+    </div>
+    <div class="stat-card">
+      <div class="number">4</div>
+      <div class="label">S・Aグレード</div>
+    </div>
+    <div class="stat-card">
+      <div class="number" style="font-size:0.9em"><span class="grade-badge" style="background:#7aa2f7;color:#1a1b26">A: 4名</span> <span class="grade-badge" style="background:#ff9e64;color:#1a1b26">B: 2名</span> </div>
+      <div class="label">グレード分布</div>
+    </div>
+  </div>
+
+  <div class="legend">
+    <div class="legend-item"><div class="legend-dot" style="background:#9ece6a"></div> S (95+)</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#7aa2f7"></div> A (85+)</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#ff9e64"></div> B (70+)</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#f7768e"></div> C (55+)</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#db4b4b"></div> D (&lt;55)</div>
+  </div>
+
+  <div class="tabs">
+    <div class="tab active" data-tab="ranking">ランキング</div>
+    <div class="tab" data-tab="all">全評価一覧</div>
+  </div>
+
+  <div class="tab-content active" id="tab-ranking">
+    <div class="grid">
+        <div class="card eval-card" data-search="高橋健二 d病院増築工事 a">
+          <div class="card-header">
+            <span class="rank">#1</span>
+            <span class="grade-large" style="color:#7aa2f7">A</span>
+          </div>
+          <h3>高橋健二</h3>
+          <div class="site-name">D病院増築工事</div>
+          <div class="score-bar-container">
+            <div class="score-bar" style="width:90%;background:#7aa2f7"></div>
+            <span class="score-label">90.9/100</span>
+          </div>
+          <div class="category-breakdown">
+            <div class="cat-row">
+              <span class="cat-label">工程管理</span>
+              <div class="cat-bar-bg"><div class="cat-bar" style="width:93%"></div></div>
+              <span class="cat-score">93.1</span>
+            </div>
+            <div class="cat-row">
+              <span class="cat-label">品質管理</span>
+              <div class="cat-bar-bg"><div class="cat-bar" style="width:86%"></div></div>
+              <span class="cat-score">86.5</span>
+            </div>
+            <div class="cat-row">
+              <span class="cat-label">安全管理</span>
+              <div class="cat-bar-bg"><div class="cat-bar" style="width:96%"></div></div>
+              <span class="cat-score">96.6</span>
+            </div>
+            <div class="cat-row">
+              <span class="cat-label">報告・コミュニケーション</span>
+              <div class="cat-bar-bg"><div class="cat-bar" style="width:91%"></div></div>
+              <span class="cat-score">91.2</span>
+            </div></div>
+          <div class="trend">推移: A(90.9)</div>
+          <div class="period">評価期間: 2026-03</div>
+        </div>
+        <div class="card eval-card" data-search="佐藤花子 c戸建て分譲工事 a">
+          <div class="card-header">
+            <span class="rank">#2</span>
+            <span class="grade-large" style="color:#7aa2f7">A</span>
+          </div>
+          <h3>佐藤花子</h3>
+          <div class="site-name">C戸建て分譲工事</div>
+          <div class="score-bar-container">
+            <div class="score-bar" style="width:90%;background:#7aa2f7"></div>
+            <span class="score-label">90.5/100</span>
+          </div>
+          <div class="category-breakdown">
+            <div class="cat-row">
+              <span class="cat-label">工程管理</span>
+              <div class="cat-bar-bg"><div class="cat-bar" style="width:88%"></div></div>
+              <span class="cat-score">88.3</span>
+            </div>
+            <div class="cat-row">
+              <span class="cat-label">品質管理</span>
+              <div class="cat-bar-bg"><div class="cat-bar" style="width:100%"></div></div>
+              <span class="cat-score">100.0</span>
+            </div>
+            <div class="cat-row">
+              <span class="cat-label">安全管理</span>
+              <div class="cat-bar-bg"><div class="cat-bar" style="width:68%"></div></div>
+              <span class="cat-score">68.5</span>
+            </div>
+            <div class="cat-row">
+              <span class="cat-label">報告・コミュニケーション</span>
+              <div class="cat-bar-bg"><div class="cat-bar" style="width:93%"></div></div>
+              <span class="cat-score">93.9</span>
+            </div></div>
+          <div class="trend">推移: A(90.5)</div>
+          <div class="period">評価期間: 2026-03</div>
+        </div>
+        <div class="card eval-card" data-search="鈴木一郎 b商業施設改修工事 a">
+          <div class="card-header">
+            <span class="rank">#3</span>
+            <span class="grade-large" style="color:#7aa2f7">A</span>
+          </div>
+          <h3>鈴木一郎</h3>
+          <div class="site-name">B商業施設改修工事</div>
+          <div class="score-bar-container">
+            <div class="score-bar" style="width:86%;background:#7aa2f7"></div>
+            <span class="score-label">86.6/100</span>
+          </div>
+          <div class="category-breakdown">
+            <div class="cat-row">
+              <span class="cat-label">工程管理</span>
+              <div class="cat-bar-bg"><div class="cat-bar" style="width:82%"></div></div>
+              <span class="cat-score">82.2</span>
+            </div>
+            <div class="cat-row">
+              <span class="cat-label">品質管理</span>
+              <div class="cat-bar-bg"><div class="cat-bar" style="width:81%"></div></div>
+              <span class="cat-score">81.8</span>
+            </div>
+            <div class="cat-row">
+              <span class="cat-label">安全管理</span>
+              <div class="cat-bar-bg"><div class="cat-bar" style="width:99%"></div></div>
+              <span class="cat-score">99.1</span>
+            </div>
+            <div class="cat-row">
+              <span class="cat-label">報告・コミュニケーション</span>
+              <div class="cat-bar-bg"><div class="cat-bar" style="width:92%"></div></div>
+              <span class="cat-score">92.1</span>
+            </div></div>
+          <div class="trend">推移: A(86.6)</div>
+          <div class="period">評価期間: 2026-03</div>
+        </div>
+        <div class="card eval-card" data-search="田中太郎 aマンション新築工事 b">
+          <div class="card-header">
+            <span class="rank">#4</span>
+            <span class="grade-large" style="color:#ff9e64">B</span>
+          </div>
+          <h3>田中太郎</h3>
+          <div class="site-name">Aマンション新築工事</div>
+          <div class="score-bar-container">
+            <div class="score-bar" style="width:82%;background:#ff9e64"></div>
+            <span class="score-label">82.0/100</span>
+          </div>
+          <div class="category-breakdown">
+            <div class="cat-row">
+              <span class="cat-label">工程管理</span>
+              <div class="cat-bar-bg"><div class="cat-bar" style="width:90%"></div></div>
+              <span class="cat-score">90.9</span>
+            </div>
+            <div class="cat-row">
+              <span class="cat-label">品質管理</span>
+              <div class="cat-bar-bg"><div class="cat-bar" style="width:82%"></div></div>
+              <span class="cat-score">82.3</span>
+            </div>
+            <div class="cat-row">
+              <span class="cat-label">安全管理</span>
+              <div class="cat-bar-bg"><div class="cat-bar" style="width:56%"></div></div>
+              <span class="cat-score">56.6</span>
+            </div>
+            <div class="cat-row">
+              <span class="cat-label">報告・コミュニケーション</span>
+              <div class="cat-bar-bg"><div class="cat-bar" style="width:87%"></div></div>
+              <span class="cat-score">87.3</span>
+            </div></div>
+          <div class="trend">推移: B(82.0) → A(89.2)</div>
+          <div class="period">評価期間: 2026-03</div>
+        </div>
+        <div class="card eval-card" data-search="山田美咲 e学校耐震補強工事 b">
+          <div class="card-header">
+            <span class="rank">#5</span>
+            <span class="grade-large" style="color:#ff9e64">B</span>
+          </div>
+          <h3>山田美咲</h3>
+          <div class="site-name">E学校耐震補強工事</div>
+          <div class="score-bar-container">
+            <div class="score-bar" style="width:78%;background:#ff9e64"></div>
+            <span class="score-label">78.8/100</span>
+          </div>
+          <div class="category-breakdown">
+            <div class="cat-row">
+              <span class="cat-label">工程管理</span>
+              <div class="cat-bar-bg"><div class="cat-bar" style="width:80%"></div></div>
+              <span class="cat-score">80.3</span>
+            </div>
+            <div class="cat-row">
+              <span class="cat-label">品質管理</span>
+              <div class="cat-bar-bg"><div class="cat-bar" style="width:68%"></div></div>
+              <span class="cat-score">68.7</span>
+            </div>
+            <div class="cat-row">
+              <span class="cat-label">安全管理</span>
+              <div class="cat-bar-bg"><div class="cat-bar" style="width:99%"></div></div>
+              <span class="cat-score">99.1</span>
+            </div>
+            <div class="cat-row">
+              <span class="cat-label">報告・コミュニケーション</span>
+              <div class="cat-bar-bg"><div class="cat-bar" style="width:78%"></div></div>
+              <span class="cat-score">78.7</span>
+            </div></div>
+          <div class="trend">推移: B(78.8)</div>
+          <div class="period">評価期間: 2026-03</div>
+        </div></div>
+  </div>
+
+  <div class="tab-content" id="tab-all">
+    <div style="overflow-x:auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>期間</th>
+            <th>監督名</th>
+            <th>現場</th>
+            <th>グレード</th>
+            <th>スコア</th>
+            <th>工程管理</th>
+            <th>品質管理</th>
+            <th>安全管理</th>
+            <th>報告</th>
+          </tr>
+        </thead>
+        <tbody>
+        <tr data-search="高橋健二 d病院増築工事 2026-03">
+          <td>2026-03</td>
+          <td><strong>高橋健二</strong></td>
+          <td>D病院増築工事</td>
+          <td><span class="grade-badge-sm" style="background:#7aa2f7;color:#1a1b26">A</span></td>
+          <td>90.9</td>
+          <td>93.1</td>
+          <td>86.5</td>
+          <td>96.6</td>
+          <td>91.2</td>
+        </tr>
+        <tr data-search="鈴木一郎 b商業施設改修工事 2026-03">
+          <td>2026-03</td>
+          <td><strong>鈴木一郎</strong></td>
+          <td>B商業施設改修工事</td>
+          <td><span class="grade-badge-sm" style="background:#7aa2f7;color:#1a1b26">A</span></td>
+          <td>86.6</td>
+          <td>82.2</td>
+          <td>81.8</td>
+          <td>99.1</td>
+          <td>92.1</td>
+        </tr>
+        <tr data-search="田中太郎 aマンション新築工事 2026-03">
+          <td>2026-03</td>
+          <td><strong>田中太郎</strong></td>
+          <td>Aマンション新築工事</td>
+          <td><span class="grade-badge-sm" style="background:#ff9e64;color:#1a1b26">B</span></td>
+          <td>82.0</td>
+          <td>90.9</td>
+          <td>82.3</td>
+          <td>56.6</td>
+          <td>87.3</td>
+        </tr>
+        <tr data-search="田中太郎 aマンション新築工事 2026-03">
+          <td>2026-03</td>
+          <td><strong>田中太郎</strong></td>
+          <td>Aマンション新築工事</td>
+          <td><span class="grade-badge-sm" style="background:#7aa2f7;color:#1a1b26">A</span></td>
+          <td>89.2</td>
+          <td>95.5</td>
+          <td>88.9</td>
+          <td>71.0</td>
+          <td>94.1</td>
+        </tr>
+        <tr data-search="山田美咲 e学校耐震補強工事 2026-03">
+          <td>2026-03</td>
+          <td><strong>山田美咲</strong></td>
+          <td>E学校耐震補強工事</td>
+          <td><span class="grade-badge-sm" style="background:#ff9e64;color:#1a1b26">B</span></td>
+          <td>78.8</td>
+          <td>80.3</td>
+          <td>68.7</td>
+          <td>99.1</td>
+          <td>78.7</td>
+        </tr>
+        <tr data-search="佐藤花子 c戸建て分譲工事 2026-03">
+          <td>2026-03</td>
+          <td><strong>佐藤花子</strong></td>
+          <td>C戸建て分譲工事</td>
+          <td><span class="grade-badge-sm" style="background:#7aa2f7;color:#1a1b26">A</span></td>
+          <td>90.5</td>
+          <td>88.3</td>
+          <td>100.0</td>
+          <td>68.5</td>
+          <td>93.9</td>
+        </tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(tc => tc.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+  });
+});
+
+const searchInput = document.getElementById('searchInput');
+searchInput.addEventListener('input', () => {
+  const q = searchInput.value.toLowerCase().trim();
+  document.querySelectorAll('.card, tr[data-search]').forEach(el => {
+    const text = el.dataset.search || el.textContent.toLowerCase();
+    el.classList.toggle('hidden', q && !text.includes(q));
+  });
+});
+</script>
+</body>
+</html>
