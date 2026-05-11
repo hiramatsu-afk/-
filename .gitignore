@@ -1,0 +1,26 @@
+# Obsidian internal
+vault/.obsidian/workspace.json
+vault/.obsidian/workspace-mobile.json
+vault/.obsidian/cache
+vault/.obsidian/plugins/*/data.json
+
+# Large binary files
+vault/attachments/
+*.pdf
+*.mp4
+*.mp3
+*.wav
+*.zip
+
+# Sync state (auto-generated)
+vault/scripts/.tldv_sync_state.json
+
+# Sensitive / confidential
+vault/05_Confidential/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Generated (rebuild with generate_dashboard.py)
+vault/dashboard.html

@@ -6,10 +6,12 @@
 - `vault/02_Areas/` - 継続的な責任領域
 - `vault/03_Resources/` - 参考資料
 - `vault/04_Archive/` - 完了・非アクティブ
+- `vault/05_Confidential/` - 機密情報（Git管理外）
 - `vault/MeetingNotes/` - 議事録
 - `vault/Research/` - リサーチノート
 - `vault/DailyNotes/` - 日次ノート
 - `vault/Templates/` - テンプレート
+- `vault/attachments/` - 添付ファイル（PDF/画像等、Git管理外）
 
 ## スクリプト
 - `vault/scripts/save_to_vault.py` - コンテンツ保存（meeting/research/inbox/daily）
@@ -34,3 +36,9 @@
 - 手動同期: `python vault/scripts/tldv_sync.py --days 7`
 - 自動同期: `tldv_webhook_server.py` を起動 + tl;dv Webhookに登録
 - MCP Server: `tldv-mcp-server` でClaude Desktopから直接会議データにアクセス可能
+- ダッシュボード: `python vault/scripts/generate_dashboard.py --open` でブラウザ表示
+
+## 注意事項
+- `vault/05_Confidential/` は `.gitignore` で除外済み。NDA・契約書・個人情報はここに置く
+- `vault/attachments/` もGit管理外。PDF・画像・動画はここに格納する
+- ノートが大量になってもテキスト(.md)のみなら問題ない。パフォーマンス劣化は主にバイナリファイルが原因
