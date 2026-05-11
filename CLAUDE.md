@@ -17,10 +17,13 @@
 - `vault/scripts/save_to_vault.py` - コンテンツ保存（meeting/research/inbox/daily）
 - `vault/scripts/organize_inbox.py` - Inbox整理ヘルパー
 - `vault/scripts/genspark_import.py` - Genspark等の外部リサーチ取り込み
-- `vault/scripts/tldv_sync.py` - tl;dv議事録の自動同期（API経由）
-- `vault/scripts/tldv_webhook_server.py` - tl;dv Webhook受信サーバー（リアルタイム自動保存）
-- `vault/scripts/vault_analyzer.py` - Vault分析（統計/タスク抽出/週次レポート）
+- `vault/scripts/tldv_sync.py` - tl;dv議事録の同期（API経由）
+- `vault/scripts/tldv_webhook_server.py` - 自動化オーケストレーター（Webhook + スケジューラ）
+- `vault/scripts/weekly_review.py` - 週次レビューノートの自動生成
+- `vault/scripts/generate_dashboard.py` - ブラウザ用HTMLダッシュボード生成
+- `vault/scripts/vault_analyzer.py` - Vault分析（統計/タスク抽出/検索）
 - `vault/scripts/bookmarklet.js` - ブラウザからWebページをVaultに取り込むブックマークレット
+- `vault/scripts/deploy/install_service.sh` - OSサービスとして常駐化（macOS/Linux）
 
 ## Claudeへの指示
 - ノートを保存する際は `save_to_vault.py` を使うか、直接Markdownファイルを作成する
@@ -37,6 +40,13 @@
 - 自動同期: `tldv_webhook_server.py` を起動 + tl;dv Webhookに登録
 - MCP Server: `tldv-mcp-server` でClaude Desktopから直接会議データにアクセス可能
 - ダッシュボード: `python vault/scripts/generate_dashboard.py --open` でブラウザ表示
+
+## 完全自動化（OS常駐）
+`./vault/scripts/deploy/install_service.sh` を実行すると以下が自動実行される:
+- 議事録: tl;dv Webhookで受信 → 即Vaultに保存 → ダッシュボード自動更新
+- 補完同期: 毎日深夜2時に取りこぼし分を補完
+- 週次レビュー: 毎週月曜9時に整理レポートを自動生成
+- 手動トリガAPI: `POST /trigger/{dashboard,weekly-review,sync}`
 
 ## 注意事項
 - `vault/05_Confidential/` は `.gitignore` で除外済み。NDA・契約書・個人情報はここに置く

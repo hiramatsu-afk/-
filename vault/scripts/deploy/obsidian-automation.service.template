@@ -1,0 +1,21 @@
+# Linux systemd ユーザーサービス設定テンプレート
+#
+# install_service.sh で {{VAULT_ROOT}}, {{PYTHON_PATH}}, {{TLDV_API_KEY}} が
+# 実際の値に置換されてから ~/.config/systemd/user/ に配置される。
+
+[Unit]
+Description=Obsidian Automation Server (tl;dv webhook + scheduler)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory={{VAULT_ROOT}}
+Environment="TLDV_API_KEY={{TLDV_API_KEY}}"
+ExecStart={{PYTHON_PATH}} {{VAULT_ROOT}}/vault/scripts/tldv_webhook_server.py --port 5050
+Restart=on-failure
+RestartSec=10
+StandardOutput=append:{{VAULT_ROOT}}/vault/scripts/.logs/systemd.out.log
+StandardError=append:{{VAULT_ROOT}}/vault/scripts/.logs/systemd.err.log
+
+[Install]
+WantedBy=default.target

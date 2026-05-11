@@ -1,34 +1,39 @@
 #!/usr/bin/env python3
 """
-tl;dv Webhook受信サーバー
+tl;dv Webhook受信サーバー + 自動化オーケストレーター
 
-tl;dvのWebhookイベント（MeetingReady / TranscriptReady）を受信し、
-自動的にObsidian Vaultに議事録を保存する。
-
-前提:
-  - tl;dv Business or Enterprise プラン
-  - TLDV_API_KEY 環境変数にAPIキーを設定
-  - ngrokなどでローカルサーバーを外部公開するか、サーバー上で稼働
+このサーバー1つで以下を自動化:
+  1. tl;dvからのWebhook受信 → 議事録を自動保存
+  2. 議事録保存後 → ダッシュボードを自動再生成
+  3. 毎週月曜9時 → 週次レビューノートを自動生成
+  4. 毎日深夜2時 → tl;dvの取りこぼし分を補完同期
 
 セットアップ:
-  1. pip install requests flask
-  2. python tldv_webhook_server.py を起動（デフォルトport: 5050）
-  3. ngrok http 5050 で外部URLを取得
-  4. tl;dv Settings > Webhooks で以下を設定:
-     - Event: TranscriptReady
-     - Endpoint URL: https://<ngrok-url>/webhook/tldv
+  pip install requests flask
+  TLDV_API_KEY=xxx python tldv_webhook_server.py
 
-使い方:
-  python tldv_webhook_server.py
-  python tldv_webhook_server.py --port 8080
+  別ターミナルで:
+  ngrok http 5050
+
+  tl;dv Settings > Webhooks で以下を登録:
+    Event:        TranscriptReady
+    Endpoint URL: https://<ngrok-url>/webhook/tldv
+
+オプション:
+  --port 5050          サーバーポート
+  --no-scheduler       内蔵スケジューラを無効化
+  --no-auto-dashboard  ダッシュボード自動更新を無効化
 """
 
 import argparse
 import json
-import os
-import sys
 import logging
-from datetime import datetime
+import os
+import subprocess
+import sys
+import threading
+import time
+from datetime import datetime, timedelta
 from pathlib import Path
 
 try:
@@ -37,19 +42,120 @@ except ImportError:
     print("Error: Flask is required. Install with: pip install flask")
     sys.exit(1)
 
-# tldv_sync.py の機能を再利用
-script_dir = Path(__file__).resolve().parent
-sys.path.insert(0, str(script_dir))
+SCRIPT_DIR = Path(__file__).resolve().parent
+sys.path.insert(0, str(SCRIPT_DIR))
 from tldv_sync import TldvClient, sync_meeting, load_sync_state, save_sync_state
 
-app = Flask(__name__)
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+VAULT_ROOT = SCRIPT_DIR.parent
+LOG_DIR = VAULT_ROOT / "scripts" / ".logs"
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(message)s',
+    handlers=[
+        logging.FileHandler(LOG_DIR / "webhook_server.log", encoding="utf-8"),
+        logging.StreamHandler(),
+    ]
+)
 logger = logging.getLogger(__name__)
+
+app = Flask(__name__)
+config = {"auto_dashboard": True}
+
+
+def regenerate_dashboard():
+    """ダッシュボードHTMLを再生成"""
+    try:
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT_DIR / "generate_dashboard.py")],
+            capture_output=True, text=True, timeout=60
+        )
+        if result.returncode == 0:
+            logger.info("Dashboard regenerated successfully")
+        else:
+            logger.error(f"Dashboard generation failed: {result.stderr}")
+    except Exception as e:
+        logger.error(f"Dashboard regeneration error: {e}")
+
+
+def run_weekly_review():
+    """週次レビューノートを生成"""
+    try:
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT_DIR / "weekly_review.py")],
+            capture_output=True, text=True, timeout=60
+        )
+        if result.returncode == 0:
+            logger.info(f"Weekly review generated: {result.stdout.strip()}")
+            if config["auto_dashboard"]:
+                regenerate_dashboard()
+        else:
+            logger.error(f"Weekly review failed: {result.stderr}")
+    except Exception as e:
+        logger.error(f"Weekly review error: {e}")
+
+
+def run_catchup_sync():
+    """過去24時間分の補完同期"""
+    api_key = os.environ.get("TLDV_API_KEY")
+    if not api_key:
+        logger.warning("Skipping catchup sync (no API key)")
+        return
+    try:
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT_DIR / "tldv_sync.py"), "--days", "1"],
+            capture_output=True, text=True, timeout=300,
+            env={**os.environ, "TLDV_API_KEY": api_key}
+        )
+        if result.returncode == 0:
+            logger.info(f"Catchup sync completed: {result.stdout.strip()[:200]}")
+            if config["auto_dashboard"]:
+                regenerate_dashboard()
+        else:
+            logger.error(f"Catchup sync failed: {result.stderr}")
+    except Exception as e:
+        logger.error(f"Catchup sync error: {e}")
+
+
+class Scheduler(threading.Thread):
+    """シンプルな内蔵スケジューラ"""
+
+    def __init__(self):
+        super().__init__(daemon=True)
+        self.stop_event = threading.Event()
+        self.last_weekly = None
+        self.last_catchup = None
+
+    def run(self):
+        logger.info("Scheduler started")
+        while not self.stop_event.is_set():
+            now = datetime.now()
+
+            # 毎週月曜9時に週次レビュー
+            if now.weekday() == 0 and now.hour == 9:
+                key = now.strftime("%Y-W%W")
+                if self.last_weekly != key:
+                    logger.info("Triggering weekly review")
+                    run_weekly_review()
+                    self.last_weekly = key
+
+            # 毎日深夜2時に補完同期
+            if now.hour == 2:
+                key = now.strftime("%Y-%m-%d")
+                if self.last_catchup != key:
+                    logger.info("Triggering catchup sync")
+                    run_catchup_sync()
+                    self.last_catchup = key
+
+            self.stop_event.wait(60)
+
+    def stop(self):
+        self.stop_event.set()
 
 
 @app.route("/webhook/tldv", methods=["POST"])
 def handle_tldv_webhook():
-    """tl;dv Webhookイベントを受信して処理"""
     api_key = os.environ.get("TLDV_API_KEY")
     if not api_key:
         logger.error("TLDV_API_KEY not set")
@@ -60,10 +166,8 @@ def handle_tldv_webhook():
         return jsonify({"error": "Invalid payload"}), 400
 
     event_type = payload.get("event", payload.get("type", "unknown"))
-    logger.info(f"Received webhook event: {event_type}")
-    logger.info(f"Payload: {json.dumps(payload, indent=2, ensure_ascii=False)[:1000]}")
+    logger.info(f"Received webhook: {event_type}")
 
-    # TranscriptReady イベントの処理
     if event_type in ("TranscriptReady", "transcript_ready", "transcript.ready"):
         meeting_data = payload.get("meeting", payload.get("data", payload))
         meeting_id = meeting_data.get("id", meeting_data.get("meetingId", ""))
@@ -74,24 +178,27 @@ def handle_tldv_webhook():
 
         try:
             client = TldvClient(api_key)
-            # API から完全なミーティングデータを取得
             meeting = client.get_meeting(meeting_id)
             result = sync_meeting(client, meeting)
 
             if result:
                 state = load_sync_state()
-                state["synced_ids"].append(meeting_id)
+                if meeting_id not in state["synced_ids"]:
+                    state["synced_ids"].append(meeting_id)
                 state["last_sync"] = datetime.now().isoformat()
                 save_sync_state(state)
-                logger.info(f"Meeting saved: {result}")
+                logger.info(f"Meeting saved: {result.name}")
+
+                if config["auto_dashboard"]:
+                    threading.Thread(target=regenerate_dashboard, daemon=True).start()
+
                 return jsonify({"status": "saved", "file": str(result)}), 200
         except Exception as e:
-            logger.error(f"Error processing meeting {meeting_id}: {e}")
+            logger.exception(f"Error processing meeting {meeting_id}")
             return jsonify({"error": str(e)}), 500
 
-    # MeetingReady イベント（ログのみ、トランスクリプトはまだ無い）
     elif event_type in ("MeetingReady", "meeting_ready", "meeting.ready"):
-        logger.info("Meeting ready event received - waiting for transcript...")
+        logger.info("Meeting ready - waiting for transcript")
         return jsonify({"status": "acknowledged"}), 200
 
     return jsonify({"status": "ignored", "event": event_type}), 200
@@ -99,22 +206,63 @@ def handle_tldv_webhook():
 
 @app.route("/health", methods=["GET"])
 def health():
-    return jsonify({"status": "ok", "timestamp": datetime.now().isoformat()}), 200
+    state = load_sync_state()
+    return jsonify({
+        "status": "ok",
+        "timestamp": datetime.now().isoformat(),
+        "synced_meetings": len(state.get("synced_ids", [])),
+        "last_sync": state.get("last_sync"),
+        "auto_dashboard": config["auto_dashboard"],
+    }), 200
+
+
+@app.route("/trigger/dashboard", methods=["POST"])
+def trigger_dashboard():
+    threading.Thread(target=regenerate_dashboard, daemon=True).start()
+    return jsonify({"status": "triggered"}), 200
+
+
+@app.route("/trigger/weekly-review", methods=["POST"])
+def trigger_weekly():
+    threading.Thread(target=run_weekly_review, daemon=True).start()
+    return jsonify({"status": "triggered"}), 200
+
+
+@app.route("/trigger/sync", methods=["POST"])
+def trigger_sync():
+    threading.Thread(target=run_catchup_sync, daemon=True).start()
+    return jsonify({"status": "triggered"}), 200
 
 
 def main():
-    parser = argparse.ArgumentParser(description="tl;dv Webhook Server for Obsidian")
-    parser.add_argument("--port", type=int, default=5050, help="Server port (default: 5050)")
-    parser.add_argument("--host", default="0.0.0.0", help="Server host (default: 0.0.0.0)")
+    parser = argparse.ArgumentParser(description="tl;dv Webhook + Automation Server")
+    parser.add_argument("--port", type=int, default=5050)
+    parser.add_argument("--host", default="0.0.0.0")
+    parser.add_argument("--no-scheduler", action="store_true",
+                        help="Disable built-in scheduler")
+    parser.add_argument("--no-auto-dashboard", action="store_true",
+                        help="Disable automatic dashboard regeneration")
     args = parser.parse_args()
 
-    if not os.environ.get("TLDV_API_KEY"):
-        logger.warning("TLDV_API_KEY not set - webhooks will fail until configured")
+    config["auto_dashboard"] = not args.no_auto_dashboard
 
-    logger.info(f"Starting tl;dv webhook server on {args.host}:{args.port}")
-    logger.info("Webhook endpoint: POST /webhook/tldv")
-    logger.info("Health check:     GET  /health")
-    app.run(host=args.host, port=args.port, debug=False)
+    if not os.environ.get("TLDV_API_KEY"):
+        logger.warning("TLDV_API_KEY not set - webhooks will fail")
+
+    if not args.no_scheduler:
+        scheduler = Scheduler()
+        scheduler.start()
+        logger.info("Built-in scheduler enabled")
+        logger.info("  - Weekly review: Mondays 9:00")
+        logger.info("  - Catchup sync:  Daily 2:00")
+
+    logger.info(f"Server starting on {args.host}:{args.port}")
+    logger.info(f"  Webhook:         POST /webhook/tldv")
+    logger.info(f"  Health:          GET  /health")
+    logger.info(f"  Manual triggers: POST /trigger/{{dashboard,weekly-review,sync}}")
+    logger.info(f"  Auto dashboard:  {config['auto_dashboard']}")
+
+    app.run(host=args.host, port=args.port, debug=False, use_reloader=False)
 
 
 if __name__ == "__main__":

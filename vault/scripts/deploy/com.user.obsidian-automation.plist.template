@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  macOS launchd 設定テンプレート
+
+  install_service.sh で {{VAULT_ROOT}}, {{PYTHON_PATH}}, {{TLDV_API_KEY}} が
+  実際の値に置換されてから ~/Library/LaunchAgents/ に配置される。
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyLists-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.user.obsidian-automation</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>{{PYTHON_PATH}}</string>
+        <string>{{VAULT_ROOT}}/vault/scripts/tldv_webhook_server.py</string>
+        <string>--port</string>
+        <string>5050</string>
+    </array>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>TLDV_API_KEY</key>
+        <string>{{TLDV_API_KEY}}</string>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin</string>
+    </dict>
+
+    <key>WorkingDirectory</key>
+    <string>{{VAULT_ROOT}}</string>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>{{VAULT_ROOT}}/vault/scripts/.logs/launchd.out.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>{{VAULT_ROOT}}/vault/scripts/.logs/launchd.err.log</string>
+</dict>
+</plist>
